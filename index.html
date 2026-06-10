@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DropIt WebRTC Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      padding: 20px;
+    }
+
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    #user-name {
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: #00ff99;
+    }
+
+    #answer {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #333;
+      min-height: 50px;
+    }
+
+    #log {
+      margin-top: 20px;
+      background: #111;
+      padding: 10px;
+      height: 200px;
+      overflow: auto;
+      font-size: 12px;
+    }
+
+    input {
+      padding: 8px;
+      margin: 5px 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="user-name">Loading...</div>
+
+  <button id="call">Create Offer (Call)</button>
+
+  <div id="answer">
+    <h3>Available Offers</h3>
+  </div>
+
+  <br>
+
+<input type="file" id="fileInput" />
+<input type="button" value="Submit" id="btn">
+<input type="button" value="Download" id="down">
+
+<br><br>
+
+<h3>Upload Progress</h3>
+<progress id="uploadProgress" value="0" max="100" style="width:300px;"></progress>
+<span id="uploadText">0%</span>
+
+<br><br>
+
+<h3>Download Progress</h3>
+<progress id="downloadProgress" value="0" max="100" style="width:300px;"></progress>
+<span id="downloadText">0%</span>
+
+  <h3>Debug Log</h3>
+  <div id="log"></div>
+
+  <!-- Socket.IO -->
+<script src="/socket.io/socket.io.js"></script>
+
+  <!-- Your WebRTC script -->
+  <script src="script.js"></script>
+
+</body>
+</html>
