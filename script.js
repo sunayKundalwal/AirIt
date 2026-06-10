@@ -18,8 +18,9 @@ const socket = io("https://cozy-tightrope-protegee.ngrok-free.dev", {
 
 let peerConnection;
 let didIOffer = false;
- let dataChannel;
- let chunks = [];
+let dataChannel;
+let chunks = [];
+let metaData;
 
 
 const peerConfiguration = {
@@ -39,77 +40,129 @@ const call = async () => {
 
     await createPeerConnection()
 
-         dataChannel = peerConnection.createDataChannel("file-transfer", {
-  ordered: true,      // preserve order
-  maxRetransmits: 10 // reliable delivery
-});
+    dataChannel = peerConnection.createDataChannel("file-transfer", {
+        ordered: true,      // preserve order
 
-dataChannel.onopen = () => {
-  console.log("Data channel open");
-//   dataChannel.send("Hello from Peer A");
-};
+    });
 
-dataChannel.onmessage = (event) => {
-  console.log("Received:", event.data);
-};
+    dataChannel.onopen = () => {
+        console.log("Data channel open");
+        //   dataChannel.send("Hello from Peer A");
+    };
+
+    dataChannel.onmessage = (event) => {
+
+        console.log("Received:", event.data);
+    };
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
 
 
-didIOffer = true 
-socket.emit("newOffer", offer);
+    didIOffer = true
+    socket.emit("newOffer", offer);
 
 }
 
 
 // -------------------- ANSWER OFFER --------------------
 const answerOffer = async (offerObj) => {
-    
+
     await createPeerConnection(offerObj);
 
     peerConnection.ondatachannel = (event) => {
-     dataChannel = event.channel;
+        dataChannel = event.channel;
 
-  dataChannel.onopen = () => {
-    console.log("Data channel open");
-  };
+        dataChannel.onopen = () => {
+            console.log("Data channel open");
+            //  dataChannel.send(JSON.stringify("{type:,dataChannelStatus : Open}"))
+        };
 
-//   dataChannel.onmessage = (event) => {
-//     console.log("Received:", event.data);
-//   };
-
-
-
-dataChannel.onmessage = async (event) => {
-    console.log(event)
-    chunks.push(event.data);
-    // STREAMING TO DISK using File System Access API:
-// const fileHandle = await window.showSaveFilePicker({ suggestedName: "filename" });
-// const writable = await fileHandle.createWritable();
-
-// dc.onmessage = async (e) => {
-//   await writable.write(e.data); // goes straight to disk
-//   // e.data is freed from RAM immediately after this line
-//   // Peak RAM: only ONE chunk at a time, no matter how big the file
-// };
-
-// dc.onclose = async () => {
-//   await writable.close(); // finalize the file
-// };
-// //    const writable = await fileHandle.createWritable();
-
-// await writable.write(chunk);
-};
+        //   dataChannel.onmessage = (event) => {
+        //     console.log("Received:", event.data);
+        //   };
 
 
- };
+        let handle;
+        let writable;
+        let bytesReceived = 0;
+        dataChannel.onmessage = async (event) => {
+
+            const data = (event.data)
+
+            if (data instanceof ArrayBuffer) {
+                // console.log("Got ArrayBuffer");
+                console.log(event)
+                console.log(`byte length:${data.byteLength}`)
+                // chunks.push(event.data);
+
+
+
+
+                let percent = Math.min((bytesReceived / metaData.size) * 100, 100);
+                console.log(`percent : ${percent}`)
+                document.getElementById("downloadProgress").value = percent
+                document.getElementById("downloadText").textContent = `${percent}%`
+
+                await writable.write(data);
+                console.log(`byte length = ${bytesReceived}`)
+                bytesReceived += data.byteLength
+
+
+
+
+            } else {
+                let d = JSON.parse(data)
+                if (d.type == 'meta') {
+                    console.log("meta dataaaaaaaaaaaaa")
+                    metaData = d
+                    console.log(metaData)
+
+                    document.getElementById("btn-file").addEventListener("click", async () => {
+                        handle = await window.showSaveFilePicker({ suggestedName: `${metaData.fileName}` })
+                        writable = await handle.createWritable()
+                    })
+
+
+
+
+
+                } else if (d.type == "end") {
+                    await writable.close();
+                    console.log("Transfer complete");
+                }
+            }
+
+
+
+
+
+            // STREAMING TO DISK using File System Access API:
+            // const fileHandle = await window.showSaveFilePicker({ suggestedName: "filename" });
+            // const writable = await fileHandle.createWritable();
+
+            // dc.onmessage = async (e) => {
+            //   await writable.write(e.data); // goes straight to disk
+            //   // e.data is freed from RAM immediately after this line
+            //   // Peak RAM: only ONE chunk at a time, no matter how big the file
+            // };
+
+            // dc.onclose = async () => {
+            //   await writable.close(); // finalize the file
+            // };
+            // //    const writable = await fileHandle.createWritable();
+
+            // await writable.write(chunk);
+        };
+
+
+    };
 
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
 
-    
+
 
     offerObj.answer = answer;
 
@@ -137,8 +190,8 @@ const addAnswer = async (offerObj) => {
     );
 
     peerConnection.onconnectionstatechange = () => {
-    console.log("State:", peerConnection.connectionState);
-};
+        console.log("State:", peerConnection.connectionState);
+    };
 };
 
 
@@ -147,7 +200,7 @@ const createPeerConnection = async (offerObj) => {
 
     peerConnection = new RTCPeerConnection(peerConfiguration);
 
-        // ICE candidates
+    // ICE candidates
     peerConnection.addEventListener("icecandidate", (e) => {
         if (e.candidate) {
             socket.emit("sendIceCandidateToSignalingServer", {
@@ -158,7 +211,7 @@ const createPeerConnection = async (offerObj) => {
         }
     });
 
-        // receive offer
+    // receive offer
     if (offerObj) {
         await peerConnection.setRemoteDescription(offerObj.offer);
     }
@@ -177,36 +230,37 @@ const addNewIceCandidate = async (iceCandidate) => {
 
 // const socket = io()
 //on connection get all available offers and call createOfferEls
-socket.on('availableOffers',offers=>{
+socket.on('availableOffers', offers => {
     console.log(offers)
     createOfferEls(offers)
 })
 
 //someone just made a new offer and we're already here - call createOfferEls
-socket.on('newOfferAwaiting',offers=>{
+socket.on('newOfferAwaiting', offers => {
     createOfferEls(offers)
 })
 
-socket.on('answerResponse',offerObj=>{
+socket.on('answerResponse', offerObj => {
     console.log(offerObj)
     addAnswer(offerObj)
 })
 
-socket.on('receivedIceCandidateFromServer',iceCandidate=>{
+socket.on('receivedIceCandidateFromServer', iceCandidate => {
     addNewIceCandidate(iceCandidate)
     console.log(iceCandidate)
 })
 
-function createOfferEls(offers){
+function createOfferEls(offers) {
     //make green answer button for this new offer
     const answerEl = document.querySelector('#answer');
-    offers.forEach(o=>{
+    offers.forEach(o => {
         console.log(o);
         const newOfferEl = document.createElement('div');
         newOfferEl.innerHTML = `<button class="btn btn-success col-1">Answer ${o.offererUserName}</button>`
-        newOfferEl.addEventListener('click',()=>{
+        newOfferEl.addEventListener('click', () => {
             console.log("reached here ")
-            answerOffer(o)})
+            answerOffer(o)
+        })
         answerEl.appendChild(newOfferEl);
     })
 }
@@ -217,61 +271,83 @@ document.querySelector('#call').addEventListener('click', call);
 
 /////////////////////////////////////////////////
 
+// dataChannel.bufferedAmountLowThreshold = 1024 * 1024;
+
 const f = document.getElementById("fileInput")
 
-document.getElementById("btn").addEventListener("click",async ()=> {
+document.getElementById("btn").addEventListener("click", async () => {
     const file = document.getElementById("fileInput").files[0]
-    
-    
-   const CHUNK_SIZE = 256 * 1024;
 
-function waitForBufferLow(dc) {
-    return new Promise(resolve => {
-        dc.onbufferedamountlow = () => resolve();
-    });
-}
 
-const sendFile = async (file) => {
+    const CHUNK_SIZE = 256 * 1024;
 
-    let offset = 0;
-
-    while (offset < file.size) {
-        console.log((offset/file.size)*100)
-    // console.log(dataChannel.bufferedAmount);
-        // 🔥 BACKPRESSURE CONTROL
-        if (dataChannel.bufferedAmount > 4 * 1024 * 1024) {
-            await waitForBufferLow(dataChannel);
-        }
-
-        const slice = file.slice(offset, offset + CHUNK_SIZE);
-        const buffer = await slice.arrayBuffer();
-
-        dataChannel.send(buffer);
-
-        offset += CHUNK_SIZE;
-
-                percent = Math.min((offset / file.size) * 100,100);
-
-        uploadProgress.value = percent;
-        uploadText.textContent = percent + "%";
+    function waitForBufferLow(dc) {
+        return new Promise(resolve => {
+            dc.onbufferedamountlow = () => resolve();
+        });
     }
-};
 
-sendFile(file)
+    const sendFile = async (file) => {
+
+        let offset = 0;
+
+        while (offset < file.size) {
+            console.log((offset / file.size) * 100)
+            // console.log(dataChannel.bufferedAmount);
+            // 🔥 BACKPRESSURE CONTROL
+            if (dataChannel.bufferedAmount > 4 * 1024 * 1024) {
+                await waitForBufferLow(dataChannel);
+            }
+
+            const slice = file.slice(offset, offset + CHUNK_SIZE);
+            const buffer = await slice.arrayBuffer();
+
+            dataChannel.send(buffer);
+
+            offset += CHUNK_SIZE;
+
+            percent = Math.min((offset / file.size) * 100, 100);
+
+            if (percent == 100) {
+                dataChannel.send(JSON.stringify({ type: "end" }));
+            }
+
+            uploadProgress.value = percent;
+            uploadText.textContent = percent + "%";
+        }
+    };
+
+    sendFile(file)
 })
 
-document.getElementById("down").addEventListener("click",async() => {
-   chunks.forEach(element => {
-    console.log(element)
-   });
-    
-   const blob = new Blob(chunks, {
-    type: "application/pdf"
-});
-console.log(`blob  : ${blob}`)
+document.getElementById("down").addEventListener("click", async () => {
+    chunks.forEach(element => {
+        console.log(element)
+    });
 
-const a = document.createElement("a");
-a.href = URL.createObjectURL(blob);
-a.download = "ss.pdf";
-a.click();
+    const blob = new Blob(chunks,
+        { type: metaData.mime }
+
+    );
+    console.log(`blob  : ${blob}`)
+
+    const a = document.createElement("a");
+    console.log(`a log ${a}`)
+    a.href = URL.createObjectURL(blob);
+    a.download = `DropIt-${metaData.fileName}`;
+    a.click();
+    console.log(`sender fie size: ${metaData.size} ans recieved file size: ${blob.size}`)
+})
+
+document.getElementById("sendMeta").addEventListener("click", async () => {
+
+    const f = document.getElementById("fileInput").files[0]
+    console.log(f)
+
+    dataChannel.send(JSON.stringify({
+        type: "meta",
+        fileName: f.name,
+        mime: f.type,
+        size: f.size
+    }));
 })
