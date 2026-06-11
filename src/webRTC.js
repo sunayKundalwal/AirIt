@@ -1,21 +1,9 @@
-import path from "path"
-import http from "http"
-import express from "express"
-import { Server } from "socket.io"
+import { io } from "./app.js"
 
-////////////// setting up websocket connection
-const app = express()
-const server = http.createServer(app)
-const io = new Server(server)
 
-app.use(express.static(path.resolve(".")))
-
-server.listen(8080, "0.0.0.0", () => {
-    console.log("Listening on the port 8080!!!")
-})
 
 ///////////////////////////// setting up WEBRTC
-
+const setupRTC = async () => {
 const offers = []
 const connectedSockets = []
 
@@ -31,6 +19,7 @@ io.on("connection", (socket) => {
     })
 
     socket.on("newOffer", (newOffer) => {
+        console.log("recieved new offer")
         const offerObj = {
             offererUserName: userName,
             offer: newOffer,
@@ -132,3 +121,6 @@ io.on("connection", (socket) => {
     })
 })
 
+}
+
+export {setupRTC}

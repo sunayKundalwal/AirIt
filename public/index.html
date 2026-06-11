@@ -42,6 +42,32 @@
       padding: 8px;
       margin: 5px 0;
     }
+        /* FILE LIST UI */
+    #fileList {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .file-item {
+      background: #1a1a1a;
+      padding: 10px;
+      border: 1px solid #333;
+      border-radius: 6px;
+    }
+
+    .file-name {
+      font-size: 14px;
+      margin-bottom: 5px;
+      color: #00ffcc;
+    }
+
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
   </style>
 </head>
 
@@ -57,7 +83,7 @@
 
   <br>
 
-<input type="file" id="fileInput" />
+<input type="file"  multiple id="fileInput" />
 <input type="button" value="Send MetaData" id="sendMeta">
 <input type="button" value="Submit" id="btn">
 <input type="button" value="Download" id="down">
@@ -75,6 +101,8 @@
 <progress id="downloadProgress" value="0" max="100" style="width:300px;"></progress>
 <span id="downloadText">0%</span>
 
+  <div id="fileList"></div>
+
   <h3>Debug Log</h3>
   <div id="log"></div>
 
@@ -82,8 +110,12 @@
 <script src="/socket.io/socket.io.js"></script>
 
   <!-- Your WebRTC script -->
-  <script src="script.js"></script>
-  <script src="socketEvents.js"></script>
+  <script type="module" src="script.js"></script>
+  <script  type="module" src="socketEvents.js"></script>
+    <script type="module" src="socket.js"></script>
+    <script type="module" src="dataChannel.js"></script>
+        <script type="module" src="webRTCConnection.js"></script>
+    
 
 </body>
 </html>
