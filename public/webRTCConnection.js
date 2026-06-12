@@ -30,7 +30,7 @@ const call = async () => {
     });
 
    
-    callDataChannel(dataChannel)
+    
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -39,6 +39,8 @@ const call = async () => {
 
     didIOffer = true
     socket.emit("newOffer", offer);
+
+    callDataChannel(dataChannel)
 
 }
 

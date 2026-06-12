@@ -8,8 +8,9 @@ document.querySelector('#user-name').innerHTML = userName;
 /////////////////////////////////////////////////
 
 
-const CHUNK_SIZE = 256 * 1024;
+const CHUNK_SIZE = 64 * 1024;
 let selectedFiles = [];
+let dirHandler
 // dataChannel.bufferedAmountLowThreshold = 1024 * 1024;
 
 
@@ -20,9 +21,15 @@ function waitForBufferLow(dc) {
         });
     }
 
-    const sendFile = async () => {
-        const file = document.getElementById("fileInput").files[0]
-        
+    const sendFile = async (file,currentFileNumber) => {
+        //const file = document.getElementById("fileInput").files[index]
+               dataChannel.send(JSON.stringify({
+        type: "currentFileMetaData",
+        fileName: file.name,
+        mime: file.type,
+        size: file.size,
+        fileNumber : currentFileNumber
+    }));
 
         let offset = 0;
         let percent;
@@ -51,17 +58,37 @@ function waitForBufferLow(dc) {
             uploadProgress.value = percent;
             uploadText.textContent = percent + "%";
         }
+
+
     };
 
 
-const sendFileBtn = document.getElementById("btn").addEventListener("click", async () => {
+// const sendFileBtn = document.getElementById("btn").addEventListener("click", async () => {
 
-    const file = document.getElementById("fileInput").files[0]
+//     const file = document.getElementById("fileInput").files[0]
     
 
     
 
-    sendFile(file)
+//     sendFile(file)
+// })
+
+document.getElementById("btn-dir").addEventListener("click",async ()=> {
+      dirHandler = await window.showDirectoryPicker();
+      console.log("dirHAndlesssssssssssss")
+      let status = await dirHandler.queryPermission({
+    mode: "readwrite"
+});
+
+ console.log("Before request:", status);
+
+    if (status !== "granted") {
+        status = await dirHandler.requestPermission({
+            mode: "readwrite"
+        });
+
+        console.log("After request:", status);
+    }
 })
 
 
@@ -86,6 +113,7 @@ const sendFileBtn = document.getElementById("btn").addEventListener("click", asy
 // })
 
 document.getElementById("sendMeta").addEventListener("click", async () => {
+    console.log(`dataChannel label: ${(dataChannel.label)}`)
     const x = document.getElementById("fileInput").files
         console.log(x)
     console.log("called metaSend")
@@ -104,6 +132,7 @@ let fileArray =[]
     //     size: f.size
     // }));
     fileArray.push({
+        fileNumber : (fileArray.length+1),
         name: f.name,
         type: f.type,
         size: f.size,
@@ -113,13 +142,16 @@ let fileArray =[]
 
 
 
-    dataChannel.send(JSON.stringify({
+    await dataChannel.send(JSON.stringify({
         type: "metaData",
         // fileName: file.name,
         // mime: file.type,
         // size: file.size
         fileArray : fileArray
     }));
+
+
+
 })
 
 
@@ -166,7 +198,49 @@ fileInput.addEventListener("change", (e) => {
   renderFileList(selectedFiles);
 });
 
+let fileArr = []
+document.getElementById("btn").addEventListener("click", async () => {
+         console.log("send button clicked")
+            const Files = document.getElementById("fileInput").files
+            console.log(Files)
+            
+               let index =1;
+            for await (let f of Files){
+                fileArr.push(f)
+                let currentFileNumber = fileArr.length
+                console.log("f printing")
+                console.log(f)
+                //let index = f.fileNumber
+                let file = document.getElementById("fileInput").files[index]
+                console.log(index)
+               await sendFile(f,currentFileNumber)
+
+              await new Promise((resolve) => {
+                dataChannel.addEventListener("message",(e)=> {
+                    const parsedData = JSON.parse(e.data)
+                       if(parsedData.type == "ack"){
+                         if(parsedData.status == "success"){
+                            console.log(`${currentFileNumber} is successfully transmitted`)
+                            resolve()
+                         }
+                       
+                }})
+                      })
+
+               }
+            })
+
+          
+
+            //  document.getElementById("btn-dir").addEventListener("click", async () => {
+                
+            //         handle = await dirHandle.getFileHandle(`${userName}-${metaData.fileName}`, {
+            //             create: true
+            //         });
+        
+
+
 export const uploadProgress = document.getElementById("uploadProgress");
 export const uploadText = document.getElementById("uploadText");
 
-export {sendFile,renderFileList}
+export {sendFile,renderFileList,dirHandler}
