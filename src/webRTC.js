@@ -1,14 +1,32 @@
 import { io } from "./app.js"
+import { generateRoomCode, joinRoom } from "./controllers/utills.controller.js";
+import { room } from "./models/room.model.js"
 
 
 
 ///////////////////////////// setting up WEBRTC
 const setupRTC = async () => {
-const offers = []
+const offers = [
+    // offererUserName
+    // offer
+    // offerIceCandidates
+    // answererUserName
+    // answer
+    // answererIceCandidates
+];
+
 const connectedSockets = []
 
-io.on("connection", (socket) => {
+io.on("connection",async (socket) => {
     console.log(`New user connected! socket id : ${socket.id}`)
+
+    const roomCode = await generateRoomCode()
+    console.log(`room code rtc :${roomCode}`)
+
+    socket.emit("generatedRoomCode",roomCode)
+    
+    
+    await joinRoom(roomCode)
 
     const userName = socket.handshake.auth.userName;
     const password = socket.handshake.auth.password;

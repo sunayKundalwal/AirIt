@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DropIt — Instant P2P File Transfer</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Google Fonts: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            orange: {
+              50:  '#FFF4EC',
+              100: '#FFE4CC',
+              200: '#FFC899',
+              300: '#FFAC66',
+              400: '#FF9033',
+              500: '#FF7A1A',
+              600: '#E86200',
+              700: '#C05000',
+              800: '#983E00',
+              900: '#702D00',
+            },
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* ─── Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #F5F2EF;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Background ────────────────────────────────────────── */
+    .bg-mesh {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 900px 600px at 15% 20%, rgba(255,122,26,.10) 0%, transparent 70%),
+        radial-gradient(ellipse 700px 700px at 85% 80%, rgba(255,122,26,.07) 0%, transparent 65%),
+        radial-gradient(ellipse 500px 400px at 60% 10%, rgba(255,200,150,.06) 0%, transparent 60%),
+        #F5F2EF;
+    }
+
+    /* ─── Glass ─────────────────────────────────────────────── */
+    .glass {
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(24px) saturate(1.4);
+      -webkit-backdrop-filter: blur(24px) saturate(1.4);
+      border: 1px solid rgba(255,255,255,0.85);
+      box-shadow:
+        0 4px 6px -1px rgba(0,0,0,.04),
+        0 20px 50px -10px rgba(0,0,0,.10),
+        inset 0 1px 0 rgba(255,255,255,.9);
+    }
+
+    .glass-light {
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.75);
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+    }
+
+    .glass-warm {
+      background: rgba(255,244,236,0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,122,26,.20);
+      box-shadow: 0 2px 12px rgba(255,122,26,.08);
+    }
+
+    /* ─── Screens ────────────────────────────────────────────── */
+    .screen {
+      display: none;
+      position: relative; z-index: 1;
+      min-height: 100vh;
+      padding: 24px 16px;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen.active { display: flex; }
+
+    /* ─── Fade animations ────────────────────────────────────── */
+    @keyframes fadeIn  { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes fadeOut { from { opacity:1; transform:translateY(0) }    to { opacity:0; transform:translateY(-14px) } }
+    @keyframes slideUp { from { opacity:0; transform:translateY(24px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes scaleIn { from { opacity:0; transform:scale(.92) }       to { opacity:1; transform:scale(1) } }
+
+    .anim-fade  { animation: fadeIn .35s cubic-bezier(.22,.68,0,1.2) both; }
+    .anim-slide { animation: slideUp .4s cubic-bezier(.22,.68,0,1.2) both; }
+    .anim-scale { animation: scaleIn .3s cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* ─── Connection illustration ────────────────────────────── */
+    .connection-canvas { position: relative; width: 100%; height: 280px; }
+
+    /* Orbit rings */
+    @keyframes orbitSlow { 0% { transform: rotate(0deg); }   100% { transform: rotate(360deg); } }
+    @keyframes orbitFast { 0% { transform: rotate(0deg); }   100% { transform: rotate(-360deg); } }
+    @keyframes pulseGlow { 0%,100% { opacity:.5; transform:scale(1); } 50% { opacity:1; transform:scale(1.06); } }
+    @keyframes floatUp   { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-10px); } }
+    @keyframes dash      { to { stroke-dashoffset: 0; } }
+    @keyframes drawPath  { from { stroke-dashoffset: 300; } to { stroke-dashoffset: 0; } }
+
+    .orbit-1 { animation: orbitSlow 8s linear infinite; transform-origin: center; }
+    .orbit-2 { animation: orbitFast 12s linear infinite; transform-origin: center; }
+    .device-float { animation: floatUp 3s ease-in-out infinite; }
+    .glow-pulse { animation: pulseGlow 2.5s ease-in-out infinite; }
+
+    @keyframes particleFloat {
+      0%   { transform: translate(0,0) scale(1);   opacity: .7; }
+      33%  { transform: translate(var(--dx1),var(--dy1)) scale(1.2); opacity: 1; }
+      66%  { transform: translate(var(--dx2),var(--dy2)) scale(.9); opacity: .6; }
+      100% { transform: translate(0,0) scale(1);   opacity: .7; }
+    }
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      background: #FF7A1A;
+      animation: particleFloat var(--dur, 4s) ease-in-out infinite;
+    }
+
+    /* ─── QR placeholder ─────────────────────────────────────── */
+    .qr-wrap {
+      display: grid;
+      grid-template-columns: repeat(15, 1fr);
+      gap: 2px;
+      width: 180px; height: 180px;
+    }
+    .qr-cell { border-radius: 2px; }
+
+    /* ─── Progress ring ──────────────────────────────────────── */
+    .progress-ring { transform: rotate(-90deg); }
+    .progress-ring-circle {
+      transition: stroke-dashoffset .6s cubic-bezier(.4,0,.2,1);
+      stroke-linecap: round;
+    }
+
+    /* ─── File progress bar ──────────────────────────────────── */
+    .progress-bar {
+      height: 6px;
+      border-radius: 99px;
+      background: #EDE8E3;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #FF7A1A, #FF9A4A);
+      transition: width .4s cubic-bezier(.4,0,.2,1);
+      position: relative;
+    }
+    .progress-fill.success { background: linear-gradient(90deg, #22C55E, #4ADE80); }
+    .progress-fill.error   { background: linear-gradient(90deg, #EF4444, #F87171); }
+
+    @keyframes shimmer {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(200%); }
+    }
+    .progress-fill.verifying::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+
+    /* ─── Badge pulse ────────────────────────────────────────── */
+    @keyframes badgePulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+    .badge-pulse { animation: badgePulse 2s ease-in-out infinite; }
+
+    /* ─── Checkmark ──────────────────────────────────────────── */
+    @keyframes checkDraw {
+      from { stroke-dashoffset: 50; opacity:0; }
+      to   { stroke-dashoffset: 0;  opacity:1; }
+    }
+    .check-path { stroke-dasharray: 50; stroke-dashoffset: 50; animation: checkDraw .5s .3s cubic-bezier(.22,.68,0,1.2) forwards; }
+
+    /* ─── Success glow ───────────────────────────────────────── */
+    @keyframes successExpand {
+      0%   { transform: scale(0); opacity: .6; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+    .success-ring {
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 2px solid rgba(34,197,94,.4);
+      animation: successExpand 1.2s ease-out infinite;
+    }
+
+    /* ─── Particles for success ──────────────────────────────── */
+    @keyframes floatParticle {
+      0%   { opacity: 0; transform: translateY(0) scale(0); }
+      20%  { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-80px) scale(1); }
+    }
+    .success-particle {
+      position: absolute;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      animation: floatParticle var(--dur, 2s) var(--delay, 0s) ease-out infinite;
+    }
+
+    /* ─── Hover lift ─────────────────────────────────────────── */
+    .hover-lift { transition: transform .18s ease, box-shadow .18s ease; }
+    .hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.10);
+    }
+
+    /* ─── Toast ──────────────────────────────────────────────── */
+    @keyframes toastIn  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: translateX(0); } }
+    @keyframes toastOut { from { opacity:1; transform: translateX(0); }    to { opacity:0; transform: translateX(20px); } }
+    .toast { animation: toastIn .25s ease; }
+    .toast.out { animation: toastOut .25s ease forwards; }
+
+    /* ─── Modal ──────────────────────────────────────────────── */
+    .modal-overlay { display:none; }
+    .modal-overlay.open { display:flex; }
+    @keyframes modalIn  { from { opacity:0; transform:scale(.94) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    .modal-card { animation: modalIn .25s cubic-bezier(.22,.68,0,1.2); }
+
+    /* ─── Segment input ──────────────────────────────────────── */
+    .code-input {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 20px; font-weight: 600;
+      letter-spacing: 4px;
+      text-align: center;
+      background: rgba(245,242,239,0.7);
+      border: 1.5px solid #E5DDD5;
+      border-radius: 12px;
+      padding: 12px 10px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      width: 110px;
+    }
+    .code-input:focus { border-color: #FF7A1A; box-shadow: 0 0 0 3px rgba(255,122,26,.12); }
+    .code-input.error { border-color: #EF4444; box-shadow: 0 0 0 3px rgba(239,68,68,.12); }
+
+    /* ─── Btn base ───────────────────────────────────────────── */
+    .btn-primary {
+      background: #FF7A1A;
+      color: white;
+      font-weight: 600; font-size: 15px;
+      border: none; cursor: pointer;
+      border-radius: 14px;
+      padding: 14px 28px;
+      transition: background .18s, transform .12s, box-shadow .18s;
+      box-shadow: 0 4px 16px rgba(255,122,26,.28);
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary:hover  { background: #E86200; box-shadow: 0 6px 20px rgba(255,122,26,.36); }
+    .btn-primary:active { transform: scale(.97); }
+    .btn-primary:disabled { background: #D1CCC8; box-shadow: none; cursor: not-allowed; color: #9CA3AF; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1.5px solid #D5CFC8;
+      color: #6B6560;
+      font-weight: 500; font-size: 15px;
+      border-radius: 14px;
+      padding: 14px 28px;
+      cursor: pointer;
+      transition: background .18s, border-color .18s, transform .12s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-ghost:hover  { background: rgba(0,0,0,.04); border-color: #B0A9A1; }
+    .btn-ghost:active { transform: scale(.97); }
+
+    .btn-sm {
+      padding: 8px 16px;
+      font-size: 13px;
+      border-radius: 10px;
+    }
+
+    /* ─── Connected anim ─────────────────────────────────────── */
+    @keyframes connectedPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.4); } 70% { box-shadow: 0 0 0 20px rgba(34,197,94,0); } }
+    .connected-badge { animation: connectedPulse 2s ease-out 3; }
+
+    /* ─── Scrollbar ──────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D5CFC8; border-radius: 99px; }
+
+    /* ─── File row hover ─────────────────────────────────────── */
+    .file-row { transition: background .15s, transform .15s; }
+    .file-row:hover { background: rgba(255,255,255,.85); transform: translateX(2px); }
+
+    /* ─── Tooltip ────────────────────────────────────────────── */
+    .tooltip-wrap { position: relative; display: inline-block; }
+    .tooltip-tip {
+      position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+      background: #1A1714; color: white;
+      font-size: 12px; font-weight: 500;
+      padding: 6px 12px; border-radius: 8px;
+      white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity .2s;
+    }
+    .tooltip-tip::after {
+      content: '';
+      position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: #1A1714;
+    }
+    .tooltip-wrap:hover .tooltip-tip { opacity: 1; }
+
+    /* ─── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .screen { padding: 16px 12px; }
+      .hero-grid { grid-template-columns: 1fr !important; }
+      .connection-canvas { height: 200px; }
+      .stats-grid { grid-template-columns: 1fr 1fr !important; }
+    }
+
+    /* ─── Connecting animation ───────────────────────────────── */
+    @keyframes connectLine {
+      0%   { stroke-dashoffset: 200; opacity:.3; }
+      50%  { stroke-dashoffset: 100; opacity: 1; }
+      100% { stroke-dashoffset: 0;   opacity:.3; }
+    }
+    .connect-line { animation: connectLine 2s ease-in-out infinite; }
+    .connect-line:nth-child(2) { animation-delay: .5s; }
+    .connect-line:nth-child(3) { animation-delay: 1s; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  BACKGROUND                                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="bg-mesh"></div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  TOAST                                                      -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="toastContainer" class="fixed top-6 right-6 z-50 flex flex-col gap-3"></div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  MODAL — Enter Code                                         -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="codeModal" class="modal-overlay fixed inset-0 z-40 bg-black/20 backdrop-blur-sm items-center justify-center p-4">
+  <div class="modal-card glass rounded-3xl p-8 max-w-sm w-full">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h3 class="text-lg font-700 text-gray-800" style="font-weight:700">Enter Connection Code</h3>
+        <p class="text-sm text-gray-500 mt-1">Type the code shown on the other device.</p>
+      </div>
+      <button onclick="closeModal()" class="w-9 h-9 rounded-full hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Close">
+        <i data-lucide="x" class="w-4 h-4 text-gray-500"></i>
+      </button>
+    </div>
+
+    <!-- Code inputs -->
+    <div class="flex items-center gap-2 justify-center mb-6">
+      <input id="codeA" class="code-input" placeholder="A8K4" maxlength="4" oninput="handleCodeInput(this,'codeB')" aria-label="First part of code" />
+      <span class="text-xl font-300 text-gray-400">—</span>
+      <input id="codeB" class="code-input" placeholder="92MP" maxlength="4" oninput="handleCodeInput(this,null)" aria-label="Second part of code" />
+    </div>
+
+    <!-- Error -->
+    <div id="modalError" class="hidden mb-4 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-100">
+      <i data-lucide="alert-circle" class="w-4 h-4 text-red-500 shrink-0"></i>
+      <span class="text-sm text-red-600">Invalid code. Please check and try again.</span>
+    </div>
+
+    <div class="flex gap-3">
+      <button onclick="closeModal()" class="btn-ghost flex-1">Cancel</button>
+      <button id="modalConnectBtn" onclick="connectViaCode()" class="btn-primary flex-1">
+        <i data-lucide="key-round" class="w-4 h-4"></i>
+        Connect
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  SCREEN 1 — Connection                                      -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="screen1" class="screen active">
+  <div class="w-full max-w-5xl mx-auto">
+
+    <!-- Logo bar -->
+    <div class="flex items-center gap-2 mb-8 anim-fade" style="animation-delay:.05s">
+      <div class="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center">
+        <i data-lucide="wifi" class="w-4 h-4 text-white"></i>
+      </div>
+      <span class="font-700 text-gray-800 tracking-tight" style="font-weight:700;font-size:18px">DropIt</span>
+    </div>
+
+    <!-- Hero card -->
+    <div class="glass rounded-3xl p-8 lg:p-12 hero-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center">
+
+      <!-- LEFT — Illustration -->
+      <div class="anim-fade" style="animation-delay:.1s">
+        <div class="connection-canvas" id="connectionCanvas">
+          <!-- SVG Illustration -->
+          <svg width="100%" height="100%" viewBox="0 0 400 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Glow background -->
+            <ellipse cx="200" cy="140" rx="120" ry="90" fill="rgba(255,122,26,0.06)" class="glow-pulse"/>
+            <ellipse cx="200" cy="140" rx="80"  ry="60"  fill="rgba(255,122,26,0.06)" class="glow-pulse" style="animation-delay:.8s"/>
+
+            <!-- Connection lines (dashed, animated) -->
+            <line x1="130" y1="140" x2="270" y2="140" stroke="rgba(255,122,26,0.3)" stroke-width="1.5" stroke-dasharray="6 4" class="connect-line"/>
+            <line x1="130" y1="130" x2="270" y2="125" stroke="rgba(255,122,26,0.18)" stroke-width="1" stroke-dasharray="4 6" class="connect-line" style="animation-delay:.7s"/>
+            <line x1="130" y1="150" x2="270" y2="155" stroke="rgba(255,122,26,0.18)" stroke-width="1" stroke-dasharray="4 6" class="connect-line" style="animation-delay:.35s"/>
+
+            <!-- WiFi dots traveling -->
+            <circle class="data-dot" cx="160" cy="140" r="4" fill="#FF7A1A" opacity=".9"/>
+            <circle class="data-dot" cx="200" cy="140" r="4" fill="#FF7A1A" opacity=".6"/>
+            <circle class="data-dot" cx="240" cy="140" r="4" fill="#FF7A1A" opacity=".9"/>
+
+            <!-- Desktop monitor -->
+            <g class="device-float">
+              <rect x="60" y="100" width="120" height="80" rx="10" fill="white" stroke="#E5DDD5" stroke-width="1.5"/>
+              <rect x="64" y="104" width="112" height="70" rx="7" fill="#F0ECE8"/>
+              <!-- Screen content -->
+              <rect x="72" y="112" width="60" height="5" rx="2.5" fill="#D5CFC8"/>
+              <rect x="72" y="121" width="40" height="4" rx="2" fill="#E5DDD5"/>
+              <rect x="72" y="129" width="80" height="4" rx="2" fill="#E5DDD5"/>
+              <rect x="72" y="137" width="55" height="4" rx="2" fill="#E5DDD5"/>
+              <!-- Accent -->
+              <rect x="72" y="148" width="30" height="12" rx="6" fill="#FF7A1A" opacity=".85"/>
+              <!-- Stand -->
+              <rect x="108" y="180" width="4" height="18" rx="2" fill="#D5CFC8"/>
+              <rect x="93" y="196" width="34" height="5" rx="2.5" fill="#D5CFC8"/>
+            </g>
+
+            <!-- Phone -->
+            <g class="device-float" style="animation-delay:1.2s">
+              <rect x="268" y="88" width="72" height="120" rx="14" fill="white" stroke="#E5DDD5" stroke-width="1.5"/>
+              <rect x="272" y="92" width="64" height="112" rx="11" fill="#F0ECE8"/>
+              <!-- Screen content mini -->
+              <rect x="278" y="104" width="40" height="5" rx="2.5" fill="#D5CFC8"/>
+              <rect x="278" y="113" width="52" height="4" rx="2" fill="#E5DDD5"/>
+              <rect x="278" y="121" width="35" height="4" rx="2" fill="#E5DDD5"/>
+              <!-- Camera -->
+              <circle cx="304" cy="96" r="3" fill="#D5CFC8"/>
+              <!-- App icon grid -->
+              <rect x="278" y="135" width="16" height="16" rx="4" fill="rgba(255,122,26,.7)"/>
+              <rect x="298" y="135" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="318" y="135" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="278" y="155" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="298" y="155" width="16" height="16" rx="4" fill="rgba(255,122,26,.35)"/>
+              <rect x="318" y="155" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <!-- Home bar -->
+              <rect x="292" y="192" width="24" height="4" rx="2" fill="#D5CFC8"/>
+            </g>
+
+            <!-- Floating data packets -->
+            <circle cx="165" cy="110" r="5" fill="#FF9A4A" opacity=".5">
+              <animate attributeName="cy" values="110;100;110" dur="3s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values=".5;.8;.5" dur="3s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="245" cy="158" r="4" fill="#FF7A1A" opacity=".45">
+              <animate attributeName="cy" values="158;168;158" dur="3.5s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values=".45;.7;.45" dur="3.5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="200" cy="90"  r="3" fill="#FFC899" opacity=".55">
+              <animate attributeName="cy" values="90;82;90" dur="2.5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="195" cy="190" r="3.5" fill="#FF7A1A" opacity=".4">
+              <animate attributeName="cy" values="190;198;190" dur="4s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+
+        <!-- Peer-to-peer badge -->
+        <div class="flex items-center gap-2 mt-4">
+          <div class="flex items-center gap-2 glass-light px-3 py-1.5 rounded-full">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-orange-500"></i>
+            <span class="text-xs font-500 text-gray-600" style="font-weight:500">End-to-End Encrypted</span>
+          </div>
+          <div class="flex items-center gap-2 glass-light px-3 py-1.5 rounded-full">
+            <i data-lucide="wifi" class="w-3.5 h-3.5 text-green-500"></i>
+            <span class="text-xs font-500 text-gray-600" style="font-weight:500">No account needed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT — QR + Title -->
+      <div class="anim-fade" style="animation-delay:.2s">
+        <div class="mb-6">
+          <h1 class="text-4xl font-800 text-gray-900 leading-tight tracking-tight" style="font-weight:800;font-size:clamp(28px,4vw,42px)">
+            Share files<br><span class="text-orange-500">instantly.</span>
+          </h1>
+          <p class="text-base text-gray-500 mt-3 leading-relaxed" style="max-width:360px">
+            Connect your phone and transfer files securely over a direct peer-to-peer connection. No apps, no accounts, no cloud.
+          </p>
+        </div>
+
+        <!-- QR Area -->
+        <div class="glass-light rounded-2xl p-5 inline-flex flex-col items-center gap-4 mb-5">
+          <div class="relative">
+            <!-- QR code (generated-looking SVG grid) -->
+            <canvas id="qrCanvas" width="180" height="180" style="border-radius:12px;display:block"></canvas>
+            <!-- Center logo overlay -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center">
+                <div class="w-6 h-6 rounded-md bg-orange-500 flex items-center justify-center">
+                  <i data-lucide="wifi" class="w-3.5 h-3.5 text-white"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm text-gray-500 flex items-center gap-1.5">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5 text-gray-400"></i>
+            Scan with your phone to connect
+          </p>
+        </div>
+
+        <!-- Connection code -->
+        <div class="flex items-center gap-3 mb-5">
+          <div class="flex-1 glass-light rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">Connection Code</p>
+              <span id="connCode" class="font-mono text-xl font-600 tracking-widest text-gray-800" style="font-family:'JetBrains Mono',monospace;font-weight:600">A8K4—92MP</span>
+            </div>
+            <button onclick="copyCode()" class="w-8 h-8 rounded-lg hover:bg-black/05 flex items-center justify-center transition-colors shrink-0" aria-label="Copy connection code">
+              <i data-lucide="copy" class="w-4 h-4 text-gray-400"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Alt connect -->
+        <div class="flex flex-col sm:flex-row items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-gray-400">
+            <div class="h-px w-12 bg-gray-200"></div>
+            <span>or</span>
+            <div class="h-px w-12 bg-gray-200"></div>
+          </div>
+          <button onclick="openModal()" class="btn-ghost btn-sm flex items-center gap-2">
+            <i data-lucide="key-round" class="w-4 h-4"></i>
+            Enter Connection Code
+          </button>
+        </div>
+
+        <!-- Demo button -->
+        <div class="mt-6 pt-6 border-t border-gray-100">
+          <button onclick="simulateConnection()" class="btn-primary w-full">
+            <i data-lucide="smartphone" class="w-4 h-4"></i>
+            Simulate Phone Connection (Demo)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  SCREEN 1B — Connecting animation                           -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="screen1b" class="screen" style="flex-direction:column">
+  <div class="glass rounded-3xl p-12 max-w-sm w-full text-center anim-scale">
+    <!-- Animated rings -->
+    <div class="relative w-32 h-32 mx-auto mb-8">
+      <div class="absolute inset-0 rounded-full border-2 border-orange-200 success-ring" style="animation-delay:0s"></div>
+      <div class="absolute inset-0 rounded-full border-2 border-orange-200 success-ring" style="animation-delay:.4s"></div>
+      <div class="absolute inset-0 rounded-full bg-orange-50 flex items-center justify-center">
+        <svg class="w-14 h-14" viewBox="0 0 56 56" fill="none">
+          <!-- Check circle with animated path -->
+          <circle cx="28" cy="28" r="24" fill="#DCFCE7" />
+          <path class="check-path" d="M18 28 L25 35 L38 20" stroke="#22C55E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+    </div>
+
+    <h2 class="text-2xl font-700 text-gray-800 mb-2" style="font-weight:700">Device Connected</h2>
+    <p class="text-gray-500 text-sm">Your phone is ready. Preparing incoming files…</p>
+
+    <!-- Devices mini -->
+    <div class="flex items-center justify-center gap-4 mt-6">
+      <div class="glass-light px-3 py-2 rounded-xl flex items-center gap-2">
+        <i data-lucide="laptop" class="w-4 h-4 text-orange-500"></i>
+        <span class="text-xs font-500 text-gray-600" style="font-weight:500">MacBook Pro</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <div class="w-2 h-2 rounded-full bg-green-400"></div>
+        <div class="w-2 h-2 rounded-full bg-green-400 mx-0.5" style="animation-delay:.2s"></div>
+        <div class="w-2 h-2 rounded-full bg-green-400"></div>
+      </div>
+      <div class="glass-light px-3 py-2 rounded-xl flex items-center gap-2">
+        <i data-lucide="smartphone" class="w-4 h-4 text-orange-500"></i>
+        <span class="text-xs font-500 text-gray-600" style="font-weight:500">iPhone 15</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  SCREEN 2 — Incoming Files                                  -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="screen2" class="screen" style="align-items:flex-start;padding-top:32px">
+  <div class="w-full max-w-2xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+        <i data-lucide="wifi" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h2 class="text-xl font-700 text-gray-800" style="font-weight:700">Incoming Files</h2>
+        <p class="text-sm text-gray-500">iPhone 15 wants to send you 4 files</p>
+      </div>
+      <!-- Connected badge -->
+      <div class="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full connected-badge" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25)">
+        <div class="w-2 h-2 rounded-full bg-green-400"></div>
+        <span class="text-xs font-500 text-green-700" style="font-weight:500">Connected</span>
+      </div>
+    </div>
+
+    <!-- File queue -->
+    <div class="glass rounded-2xl overflow-hidden mb-5 anim-slide" style="animation-delay:.08s">
+      <div class="px-5 py-4 border-b border-gray-100/60 flex items-center justify-between">
+        <span class="text-sm font-600 text-gray-600" style="font-weight:600">Files to receive</span>
+        <span class="text-xs text-gray-400">2.63 GB total</span>
+      </div>
+
+      <div class="divide-y divide-gray-50">
+        <!-- File rows -->
+        <div class="file-row flex items-center gap-4 px-5 py-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+            <i data-lucide="video" class="w-5 h-5" style="color:#EF4444"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-500 text-gray-800 truncate" style="font-weight:500">Vacation.mp4</p>
+            <p class="text-xs text-gray-400 mt-0.5">2.4 GB</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-500 badge-pulse" style="font-weight:500;background:rgba(255,122,26,.1);color:#C05000">Queued</span>
+        </div>
+
+        <div class="file-row flex items-center gap-4 px-5 py-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(59,130,246,.1)">
+            <i data-lucide="image" class="w-5 h-5" style="color:#3B82F6"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-500 text-gray-800 truncate" style="font-weight:500">IMG_1032.jpg</p>
+            <p class="text-xs text-gray-400 mt-0.5">4.1 MB</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-500" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Waiting</span>
+        </div>
+
+        <div class="file-row flex items-center gap-4 px-5 py-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+            <i data-lucide="file" class="w-5 h-5" style="color:#EF4444"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-500 text-gray-800 truncate" style="font-weight:500">Resume.pdf</p>
+            <p class="text-xs text-gray-400 mt-0.5">750 KB</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-500" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Waiting</span>
+        </div>
+
+        <div class="file-row flex items-center gap-4 px-5 py-4">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(168,85,247,.1)">
+            <i data-lucide="file-archive" class="w-5 h-5" style="color:#A855F7"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-500 text-gray-800 truncate" style="font-weight:500">Music.zip</p>
+            <p class="text-xs text-gray-400 mt-0.5">230 MB</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-500" style="font-weight:500;background:rgba(34,197,94,.1);color:#15803D">Ready</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder Selection -->
+    <div id="folderCard" class="glass rounded-2xl p-5 mb-5 anim-slide" style="animation-delay:.14s;border:1.5px solid rgba(255,122,26,.2);background:rgba(255,244,236,.75)">
+      <div class="flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+          <i data-lucide="folder-open" class="w-6 h-6 text-orange-500"></i>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-sm font-600 text-gray-800 mb-1" style="font-weight:600">Choose where to save files</h3>
+          <p class="text-xs text-gray-500 leading-relaxed mb-3">For your privacy, files are only saved to folders you explicitly select.</p>
+          <button id="chooseFolderBtn" onclick="chooseFolder()" class="btn-primary btn-sm">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+            Choose Folder
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder selected state (hidden initially) -->
+    <div id="folderSelected" class="hidden glass rounded-2xl p-5 mb-5 anim-slide" style="border:1.5px solid rgba(34,197,94,.25);background:rgba(240,253,244,.8)">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(34,197,94,.1)">
+          <i data-lucide="check-circle" class="w-6 h-6 text-green-500"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-green-700 font-500 mb-0.5" style="font-weight:500">Selected Folder</p>
+          <p class="text-sm font-600 text-gray-800 truncate" style="font-weight:600">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5 inline text-gray-400 mr-1"></i>
+            Downloads/DropIt
+          </p>
+        </div>
+        <button onclick="changeFolder()" class="btn-ghost btn-sm">Change</button>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="flex items-center gap-3 anim-slide" style="animation-delay:.2s">
+      <button onclick="declineTransfer()" class="btn-ghost flex-1">
+        <i data-lucide="x" class="w-4 h-4"></i>
+        Decline
+      </button>
+      <div id="acceptWrap" class="tooltip-wrap flex-1">
+        <span id="acceptTooltip" class="tooltip-tip">Select a folder to continue</span>
+        <button id="acceptBtn" onclick="acceptTransfer()" class="btn-primary w-full" disabled>
+          <i data-lucide="download" class="w-4 h-4"></i>
+          Accept Transfer
+        </button>
+      </div>
+    </div>
+
+    <!-- Summary footer -->
+    <div class="flex items-center justify-center gap-6 mt-5 text-xs text-gray-400 anim-slide" style="animation-delay:.24s">
+      <span><strong class="text-gray-600">4</strong> files</span>
+      <span class="w-px h-4 bg-gray-200"></span>
+      <span><strong class="text-gray-600">2.63 GB</strong> total</span>
+      <span class="w-px h-4 bg-gray-200"></span>
+      <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-green-500"></i> End-to-end encrypted</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  SCREEN 4 — Active Transfer                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="screen4" class="screen" style="align-items:flex-start;padding-top:32px">
+  <div class="w-full max-w-2xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+        <i data-lucide="download" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h2 class="text-xl font-700 text-gray-800" style="font-weight:700">Receiving Files</h2>
+        <p class="text-sm text-gray-500">Do not disconnect your devices</p>
+      </div>
+      <div class="ml-auto">
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style="background:rgba(255,122,26,.08);border:1px solid rgba(255,122,26,.2)">
+          <i data-lucide="loader-circle" class="w-3 h-3 text-orange-500 animate-spin"></i>
+          <span class="text-xs font-500 text-orange-700" style="font-weight:500">Transferring</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overall Progress -->
+    <div class="glass rounded-2xl p-6 mb-5 anim-slide" style="animation-delay:.06s">
+      <div class="flex items-center gap-6">
+        <!-- Ring -->
+        <div class="relative shrink-0">
+          <svg width="120" height="120" class="progress-ring">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#F0ECE8" stroke-width="8"/>
+            <circle id="overallRing" cx="60" cy="60" r="52" fill="none" stroke="#FF7A1A" stroke-width="8"
+              stroke-dasharray="326.7" stroke-dashoffset="326.7" class="progress-ring-circle"
+              stroke-linecap="round"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="overallPct" class="text-2xl font-700 text-gray-800" style="font-weight:700">0%</span>
+            <span class="text-xs text-gray-400 mt-0.5">Overall</span>
+          </div>
+        </div>
+
+        <!-- Stats grid -->
+        <div class="flex-1 grid grid-cols-2 gap-3 stats-grid">
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1 flex items-center gap-1"><i data-lucide="upload" class="w-3 h-3"></i> Speed</p>
+            <p id="statSpeed" class="text-sm font-600 text-gray-800" style="font-weight:600">0 MB/s</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i> Remaining</p>
+            <p id="statTime" class="text-sm font-600 text-gray-800" style="font-weight:600">Calculating…</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1 flex items-center gap-1"><i data-lucide="check-circle" class="w-3 h-3"></i> Completed</p>
+            <p id="statFiles" class="text-sm font-600 text-gray-800" style="font-weight:600">0 / 4</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1 flex items-center gap-1"><i data-lucide="wifi" class="w-3 h-3"></i> Connection</p>
+            <p class="text-sm font-600 text-gray-800" style="font-weight:600;font-size:11px">P2P Secure</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File progress list -->
+    <div id="fileProgressList" class="glass rounded-2xl overflow-hidden anim-slide" style="animation-delay:.12s">
+      <div class="px-5 py-3 border-b border-gray-100/60">
+        <span class="text-sm font-600 text-gray-600" style="font-weight:600">File Progress</span>
+      </div>
+      <div id="fileProgressItems" class="divide-y divide-gray-50">
+        <!-- Injected by JS -->
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  SCREEN 5 — Transfer Complete                               -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="screen5" class="screen" style="flex-direction:column">
+  <div class="w-full max-w-md mx-auto text-center">
+
+    <!-- Success animation -->
+    <div class="relative w-36 h-36 mx-auto mb-8">
+      <!-- Floating particles -->
+      <div class="success-particle" style="left:50%;top:50%;background:#FF7A1A;--dur:2.2s;--delay:0s"></div>
+      <div class="success-particle" style="left:30%;top:60%;background:#22C55E;--dur:2.5s;--delay:.3s"></div>
+      <div class="success-particle" style="left:70%;top:55%;background:#FF9A4A;--dur:2s;--delay:.6s"></div>
+      <div class="success-particle" style="left:45%;top:65%;background:#FFC899;--dur:2.8s;--delay:.15s"></div>
+      <div class="success-particle" style="left:60%;top:45%;background:#86EFAC;--dur:2.3s;--delay:.45s"></div>
+
+      <!-- Expanding rings -->
+      <div class="absolute inset-0 rounded-full" style="border:2px solid rgba(34,197,94,.3);animation:successExpand 1.8s ease-out infinite;animation-delay:0s"></div>
+      <div class="absolute inset-0 rounded-full" style="border:2px solid rgba(34,197,94,.2);animation:successExpand 1.8s ease-out infinite;animation-delay:.5s"></div>
+
+      <!-- Center -->
+      <div class="absolute inset-0 rounded-full bg-green-50 flex items-center justify-center">
+        <svg class="w-16 h-16" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" fill="#DCFCE7"/>
+          <path d="M20 32 L28 40 L44 24" stroke="#22C55E" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"
+            style="stroke-dasharray:50;stroke-dashoffset:50;animation:checkDraw .6s .4s cubic-bezier(.22,.68,0,1.2) forwards"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="anim-fade">
+      <h2 class="text-3xl font-800 text-gray-900 mb-2" style="font-weight:800">Transfer Complete</h2>
+      <p class="text-gray-500">All files have been securely saved to your device.</p>
+    </div>
+
+    <!-- Summary card -->
+    <div class="glass rounded-2xl p-6 mt-6 mb-6 text-left anim-slide" style="animation-delay:.12s">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Files received</span>
+          <span class="text-sm font-600 text-gray-800" style="font-weight:600">4 files</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Total size</span>
+          <span class="text-sm font-600 text-gray-800" style="font-weight:600">2.63 GB</span>
+        </div>
+        <div class="flex items-center justify-between py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Saved to</span>
+          <span class="text-sm font-600 text-gray-800 flex items-center gap-1" style="font-weight:600">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5 text-gray-400"></i>
+            Downloads/DropIt
+          </span>
+        </div>
+        <div class="flex items-center justify-between py-2">
+          <span class="text-sm text-gray-500">Transfer time</span>
+          <span class="text-sm font-600 text-gray-800" style="font-weight:600">2m 14s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-col gap-3 anim-slide" style="animation-delay:.2s">
+      <button onclick="openFolder()" class="btn-primary w-full justify-center">
+        <i data-lucide="folder-open" class="w-4 h-4"></i>
+        Open Folder
+      </button>
+      <div class="flex gap-3">
+        <button onclick="receiveMore()" class="btn-ghost flex-1 justify-center">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          Receive More
+        </button>
+        <button onclick="done()" class="btn-ghost flex-1 justify-center">Done</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--  JAVASCRIPT                                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<script>
+/* ── Init Lucide ──────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  generateQR();
+  generateParticles();
+});
+
+/* ── Screen management ───────────────────────────────────── */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active');
+  });
+  const s = document.getElementById(id);
+  if (s) s.classList.add('active');
+  // Re-init icons after DOM changes
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+/* ── QR Code generator ───────────────────────────────────── */
+function generateQR() {
+  const canvas = document.getElementById('qrCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const size = 180;
+  const cells = 21;
+  const cell = size / cells;
+
+  // Background
+  ctx.fillStyle = '#FFFFFF';
+  ctx.roundRect(0, 0, size, size, 12);
+  ctx.fill();
+
+  // QR-like pattern (deterministic pseudo-random for visual authenticity)
+  const seed = 0x4A8B;
+  const pattern = [];
+  function pseudoRand(i, j) {
+    const v = ((i * 31 + j * 17 + seed) * 1103515245 + 12345) & 0x7fffffff;
+    return (v % 100) > 50;
+  }
+
+  // Finder patterns (top-left, top-right, bottom-left)
+  const finder = (ox, oy) => {
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+      const inner = y >= 1 && y <= 5 && x >= 1 && x <= 5;
+      const innerCore = y >= 2 && y <= 4 && x >= 2 && x <= 4;
+      const on = !inner || innerCore;
+      ctx.fillStyle = on ? '#1A1714' : '#FFFFFF';
+      roundRect(ctx, (ox + x) * cell + 2, (oy + y) * cell + 2, cell - 1, cell - 1, 2);
+    }
+  };
+
+  ctx.fillStyle = '#1A1714';
+
+  // Data modules
+  for (let y = 0; y < cells; y++) {
+    for (let x = 0; x < cells; x++) {
+      // Skip finder zones
+      const inTL = x < 9 && y < 9;
+      const inTR = x > 11 && y < 9;
+      const inBL = x < 9 && y > 11;
+      if (inTL || inTR || inBL) continue;
+      if (pseudoRand(x, y)) {
+        ctx.fillStyle = '#1A1714';
+        roundRect(ctx, x * cell + 2, y * cell + 2, cell - 2, cell - 2, 1.5);
+      }
+    }
+  }
+
+  finder(0, 0);
+  finder(14, 0);
+  finder(0, 14);
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.roundRect(x, y, w, h, r);
+    c.fill();
+  }
+}
+
+/* ── Floating particles on connection screen ─────────────── */
+function generateParticles() {
+  const canvas = document.getElementById('connectionCanvas');
+  if (!canvas) return;
+  const defs = [
+    { w:8,  h:8,  top:'15%', left:'8%',  dur:'4.2s', delay:'0s',   dx1:'12px', dy1:'-18px', dx2:'-8px', dy2:'8px'  },
+    { w:5,  h:5,  top:'70%', left:'12%', dur:'3.5s', delay:'.4s',  dx1:'-10px',dy1:'-12px', dx2:'6px',  dy2:'15px' },
+    { w:10, h:10, top:'25%', left:'80%', dur:'5s',   delay:'.8s',  dx1:'8px',  dy1:'14px',  dx2:'-12px',dy2:'-8px' },
+    { w:6,  h:6,  top:'75%', left:'75%', dur:'4s',   delay:'1.2s', dx1:'-6px', dy1:'-20px', dx2:'10px', dy2:'5px'  },
+    { w:7,  h:7,  top:'50%', left:'3%',  dur:'3.8s', delay:'.6s',  dx1:'14px', dy1:'8px',   dx2:'-4px', dy2:'-16px'},
+  ];
+  defs.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'particle';
+    Object.assign(el.style, {
+      width: d.w+'px', height: d.h+'px',
+      top: d.top, left: d.left,
+      '--dur': d.dur,
+      '--dx1': d.dx1, '--dy1': d.dy1,
+      '--dx2': d.dx2, '--dy2': d.dy2,
+      animationDelay: d.delay,
+      opacity: '0.5',
+    });
+    canvas.appendChild(el);
+  });
+}
+
+/* ── Copy connection code ────────────────────────────────── */
+function copyCode() {
+  const code = document.getElementById('connCode')?.textContent || 'A8K4-92MP';
+  navigator.clipboard.writeText(code.replace('—', '-')).catch(() => {});
+  showToast('Connection code copied', 'check-circle', 'green');
+}
+
+/* ── Modal ───────────────────────────────────────────────── */
+function openModal() {
+  document.getElementById('codeModal').classList.add('open');
+  document.getElementById('codeA').value = '';
+  document.getElementById('codeB').value = '';
+  document.getElementById('modalError').classList.add('hidden');
+  document.getElementById('codeA').classList.remove('error');
+  document.getElementById('codeB').classList.remove('error');
+  setTimeout(() => document.getElementById('codeA').focus(), 100);
+  lucide.createIcons();
+}
+
+function closeModal() {
+  document.getElementById('codeModal').classList.remove('open');
+}
+
+function handleCodeInput(el, nextId) {
+  el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (el.value.length >= 4 && nextId) {
+    document.getElementById(nextId)?.focus();
+  }
+}
+
+function connectViaCode() {
+  const a = document.getElementById('codeA').value.trim();
+  const b = document.getElementById('codeB').value.trim();
+  const err = document.getElementById('modalError');
+  const ia = document.getElementById('codeA');
+  const ib = document.getElementById('codeB');
+
+  // Reset
+  ia.classList.remove('error'); ib.classList.remove('error');
+  err.classList.add('hidden');
+
+  if (a.length < 4 || b.length < 4) {
+    ia.classList.toggle('error', a.length < 4);
+    ib.classList.toggle('error', b.length < 4);
+    err.classList.remove('hidden');
+    return;
+  }
+
+  // Simulate "correct" code check: accept anything that's 4+4
+  const btn = document.getElementById('modalConnectBtn');
+  btn.innerHTML = '<span class="animate-spin inline-block mr-2">⟳</span> Connecting…';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    closeModal();
+    simulateConnection();
+  }, 1200);
+}
+
+/* ── Simulate Connection ─────────────────────────────────── */
+function simulateConnection() {
+  showScreen('screen1b');
+  setTimeout(() => {
+    showScreen('screen2');
+    lucide.createIcons();
+  }, 2200);
+}
+
+/* ── Folder selection ────────────────────────────────────── */
+function chooseFolder() {
+  const btn = document.getElementById('chooseFolderBtn');
+  btn.innerHTML = '<span class="animate-spin inline-block mr-1">⟳</span> Opening…';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    document.getElementById('folderCard').classList.add('hidden');
+    const sel = document.getElementById('folderSelected');
+    sel.classList.remove('hidden');
+    // Enable accept button
+    const acceptBtn = document.getElementById('acceptBtn');
+    acceptBtn.disabled = false;
+    document.getElementById('acceptTooltip').style.display = 'none';
+    lucide.createIcons();
+    showToast('Folder selected: Downloads/DropIt', 'check-circle', 'green');
+  }, 900);
+}
+
+function changeFolder() {
+  document.getElementById('folderSelected').classList.add('hidden');
+  const fc = document.getElementById('folderCard');
+  fc.classList.remove('hidden');
+  const btn = document.getElementById('chooseFolderBtn');
+  btn.innerHTML = '<i data-lucide="folder-open" class="w-3.5 h-3.5"></i> Choose Folder';
+  btn.disabled = false;
+  document.getElementById('acceptBtn').disabled = true;
+  document.getElementById('acceptTooltip').style.display = '';
+  lucide.createIcons();
+}
+
+/* ── Accept / Decline ─────────────────────────────────────── */
+function declineTransfer() {
+  showToast('Transfer declined', 'x', 'red');
+  setTimeout(() => done(), 800);
+}
+
+function acceptTransfer() {
+  showScreen('screen4');
+  lucide.createIcons();
+  startTransferSimulation();
+}
+
+/* ── Transfer Simulation ─────────────────────────────────── */
+const files = [
+  { name: 'Vacation.mp4',  size: '2.4 GB', icon: 'video',        color: '#EF4444' },
+  { name: 'IMG_1032.jpg',  size: '4.1 MB', icon: 'image',        color: '#3B82F6' },
+  { name: 'Resume.pdf',    size: '750 KB', icon: 'file',         color: '#EF4444' },
+  { name: 'Music.zip',     size: '230 MB', icon: 'file-archive',  color: '#A855F7' },
+];
+
+// Demo durations in ms — realistic feel but fast enough to watch
+// File 0 takes ~12s, others faster
+const fileDurations = [12000, 3000, 2000, 6000];
+const displaySpeeds = ['43.2', '48.7', '52.1', '44.6']; // MB/s shown per file
+
+let transferInterval = null;
+// Per-file state: pct (0-100), phase ('queued'|'receiving'|'verifying'|'done'), startedAt, verifyAt
+let fileStates = [];
+
+function startTransferSimulation() {
+  // Reset state
+  if (transferInterval) clearInterval(transferInterval);
+  fileStates = files.map(() => ({ pct: 0, phase: 'queued', startedAt: null, verifyAt: null }));
+
+  // Build DOM
+  const container = document.getElementById('fileProgressItems');
+  container.innerHTML = '';
+  files.forEach((f, i) => container.insertAdjacentHTML('beforeend', fileProgressHTML(f, i)));
+  lucide.createIcons();
+
+  // Stagger file starts: next file begins ~1s after previous one starts
+  const now = performance.now();
+  files.forEach((_, i) => {
+    const delay = i * 1100; // ms before this file starts
+    fileStates[i].startedAt = now + delay;
+    fileStates[i].verifyAt  = now + delay + fileDurations[i] * 0.92; // verifying at 92%
+  });
+
+  transferInterval = setInterval(tickTransfer, 80);
+}
+
+function tickTransfer() {
+  const now = performance.now();
+  let totalPct = 0;
+  let doneCount = 0;
+
+  files.forEach((f, i) => {
+    const st = fileStates[i];
+    const start = st.startedAt;
+    const dur   = fileDurations[i];
+
+    if (now < start) {
+      // Not started yet — queued
+      renderFileState(i, 0, 'queued', '');
+      return;
+    }
+
+    const elapsed = now - start;
+
+    if (st.phase === 'done') {
+      renderFileState(i, 100, 'done', 'Saved to Downloads/DropIt');
+      totalPct += 100;
+      doneCount++;
+      return;
+    }
+
+    // Ease-in-out progress curve so it feels natural
+    const rawT = Math.min(1, elapsed / dur);
+    // Ease: slow start, fast middle, slow near end
+    const eased = rawT < 0.5
+      ? 2 * rawT * rawT
+      : 1 - Math.pow(-2 * rawT + 2, 2) / 2;
+
+    const pct = Math.min(99.5, eased * 100);
+
+    if (now >= st.verifyAt && st.phase !== 'verifying' && st.phase !== 'done') {
+      st.phase = 'verifying';
+    }
+
+    if (st.phase === 'verifying') {
+      // Verifying: hold at ~95-99%, then complete after 0.6s
+      const verifyElapsed = now - st.verifyAt;
+      const vPct = Math.min(100, 95 + (verifyElapsed / 600) * 5);
+      if (vPct >= 100) {
+        st.phase = 'done';
+        renderFileState(i, 100, 'done', 'Saved to Downloads/DropIt');
+        totalPct += 100;
+        doneCount++;
+        return;
+      }
+      renderFileState(i, vPct, 'verifying', displaySpeeds[i] + ' MB/s');
+      totalPct += vPct;
+      return;
+    }
+
+    if (pct > 0 && st.phase === 'queued') st.phase = 'receiving';
+
+    const jitter = (Math.random() - 0.5) * 2;
+    const speedStr = (parseFloat(displaySpeeds[i]) + jitter).toFixed(1) + ' MB/s';
+    renderFileState(i, pct, 'receiving', speedStr);
+    totalPct += pct;
+  });
+
+  // Overall ring
+  const overallPct = Math.round(totalPct / files.length);
+  const circ = 326.7;
+  const ring = document.getElementById('overallRing');
+  const txt  = document.getElementById('overallPct');
+  if (ring) {
+    ring.style.strokeDashoffset = (circ - (circ * overallPct / 100)).toFixed(2);
+    if (doneCount === files.length) ring.style.stroke = '#22C55E';
+    else ring.style.stroke = '#FF7A1A';
+  }
+  if (txt) txt.textContent = overallPct + '%';
+
+  // Stats
+  const speedVal = (44 + Math.random() * 6).toFixed(1);
+  const secsLeft = doneCount < files.length
+    ? Math.max(0, Math.round(((100 - overallPct) / 100) * 18))
+    : 0;
+  const g = id => document.getElementById(id);
+  if (g('statSpeed'))  g('statSpeed').textContent  = speedVal + ' MB/s';
+  if (g('statTime'))   g('statTime').textContent   = secsLeft > 0 ? formatTime(secsLeft) : 'Done';
+  if (g('statFiles'))  g('statFiles').textContent  = doneCount + ' / ' + files.length;
+
+  // All done → go to screen 5
+  if (doneCount === files.length) {
+    clearInterval(transferInterval);
+    transferInterval = null;
+    setTimeout(() => showScreen('screen5'), 700);
+  }
+}
+
+function renderFileState(i, pct, phase, speedText) {
+  const fill  = document.getElementById('fileFill'  + i);
+  const pctEl = document.getElementById('filePct'   + i);
+  const badge = document.getElementById('fileBadge' + i);
+  const spd   = document.getElementById('fileSpeed' + i);
+  if (!fill) return;
+
+  // Progress bar
+  fill.style.width = pct.toFixed(1) + '%';
+
+  // Phase-specific styling
+  fill.classList.remove('verifying', 'success', 'error');
+  if (phase === 'verifying') fill.classList.add('verifying');
+  if (phase === 'done')      fill.classList.add('success');
+
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  if (spd)   spd.textContent   = speedText;
+
+  if (!badge) return;
+  const phaseMap = {
+    queued:    { label: 'Queued',    bg: 'rgba(107,114,128,.1)', color: '#6B7280'  },
+    receiving: { label: 'Receiving', bg: 'rgba(255,122,26,.1)',  color: '#C05000'  },
+    verifying: { label: 'Verifying', bg: 'rgba(168,85,247,.1)',  color: '#7C3AED'  },
+    done:      { label: 'Completed', bg: 'rgba(34,197,94,.1)',   color: '#15803D'  },
+  };
+  const p = phaseMap[phase] || phaseMap.queued;
+  badge.textContent            = p.label;
+  badge.style.background       = p.bg;
+  badge.style.color            = p.color;
+}
+
+function formatTime(s) {
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+
+/* ── Screen 5 actions ────────────────────────────────────── */
+function openFolder() { showToast('Opening Downloads/DropIt…', 'folder-open', 'orange'); }
+function done()        { showScreen('screen1'); lucide.createIcons(); }
+function receiveMore() { showScreen('screen2'); resetTransferState(); lucide.createIcons(); }
+
+function resetTransferState() {
+  fileStates = files.map(() => ({ pct: 0, phase: 'queued', startedAt: null, verifyAt: null }));
+  if (transferInterval) { clearInterval(transferInterval); transferInterval = null; }
+  // Reset folder selection
+  document.getElementById('folderCard').classList.remove('hidden');
+  document.getElementById('folderSelected').classList.add('hidden');
+  document.getElementById('acceptBtn').disabled = true;
+  document.getElementById('acceptTooltip').style.display = '';
+  const btn = document.getElementById('chooseFolderBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="folder-open" class="w-3.5 h-3.5"></i> Choose Folder'; }
+  lucide.createIcons();
+}
+
+/* ── Toast ───────────────────────────────────────────────── */
+function showToast(msg, icon = 'check-circle', color = 'green') {
+  const colorMap = {
+    green:  { bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-700', ic: 'text-green-500'  },
+    orange: { bg: 'bg-orange-50', border: 'border-orange-200',text: 'text-orange-700',ic: 'text-orange-500' },
+    red:    { bg: 'bg-red-50',    border: 'border-red-200',   text: 'text-red-700',   ic: 'text-red-500'   },
+  };
+  const c = colorMap[color] || colorMap.green;
+
+  const toast = document.createElement('div');
+  toast.className = `toast flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg ${c.bg} ${c.border}`;
+  toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 shrink-0 ${c.ic}"></i><span class="text-sm font-500 ${c.text}" style="font-weight:500">${msg}</span>`;
+  document.getElementById('toastContainer').appendChild(toast);
+  lucide.createIcons();
+
+  setTimeout(() => {
+    toast.classList.add('out');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+</script>
+</body>
+</html>

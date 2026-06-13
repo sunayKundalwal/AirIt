@@ -27,6 +27,10 @@ socket.on('receivedIceCandidateFromServer', iceCandidate => {
     console.log(iceCandidate)
 })
 
+socket.on("generatedRoomCode", (code) => {
+    console.log(`generated room code :-${code}`)
+})
+
 function createOfferEls(offers) {
     //make green answer button for this new offer
     const answerEl = document.querySelector('#answer');

@@ -47,7 +47,7 @@ const answerDataChannel = async (dataChannel) => {
             document.getElementById("downloadText").textContent = `${percent}%`
             console.log(`byte length = ${bytesReceived}`)
 
-            if (bytesReceived == currentFile.size) {
+            if (bytesReceived === currentFile.size) {
                 console.log("Complete file received!!!!!")
                 bytesReceived = 0;
                 percent = 0;
@@ -57,6 +57,9 @@ const answerDataChannel = async (dataChannel) => {
                     status: "success",
                     fileNumber: currentFile.fileNumber
                 }))
+
+                await writable.close();
+                console.log("writable closed")
 
             }
 
@@ -102,8 +105,8 @@ const answerDataChannel = async (dataChannel) => {
             } else if (d.type == "end") {
                 //if(metaData.fileArray.length == currentFile.fileNumber){
 
-                await writable.close();
-                console.log("writable closed")
+                // await writable.close();
+                // console.log("writable closed")
                 // // }
 
                 // console.log("Transfer complete");

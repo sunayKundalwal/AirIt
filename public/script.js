@@ -8,7 +8,7 @@ document.querySelector('#user-name').innerHTML = userName;
 /////////////////////////////////////////////////
 
 
-const CHUNK_SIZE = 64 * 1024;
+const CHUNK_SIZE = 256 * 1024;
 let selectedFiles = [];
 let dirHandler
 // dataChannel.bufferedAmountLowThreshold = 1024 * 1024;
