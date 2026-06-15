@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PeerDrop — P2P File Transfer</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <script>
+    /* ─────────────────────────────────────────────────────────────────────────
+       Tailwind Config
+       Extend the default theme with brand tokens and custom font families.
+       ───────────────────────────────────────────────────────────────────────── */
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50:  '#f0f4ff',
+              100: '#dde8ff',
+              200: '#c0d2ff',
+              400: '#6b8eff',
+              500: '#4c6ef5',
+              600: '#3451d1',
+              700: '#2540b0',
+              800: '#1a308a',
+              900: '#112060',
+            },
+            surface: '#0f1117',
+            panel:   '#161b27',
+            card:    '#1d2333',
+            border:  '#2a3045',
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s ease-in-out infinite',
+            'fade-in':    'fadeIn 0.25s ease forwards',
+          },
+          keyframes: {
+            fadeIn: { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* ─────────────────────────────────────────────────────────────────────────
+       Global base styles.
+       We use a dark, neutral background so the brand blue pops clearly and the
+       file transfer progress bars are easy to scan.
+       ───────────────────────────────────────────────────────────────────────── */
+    body {
+      background-color: #0f1117;
+      color: #e2e8f0;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1d2333; }
+    ::-webkit-scrollbar-thumb { background: #2a3045; border-radius: 9px; }
+
+    /* ── File drag overlay glow ── */
+    .drop-zone.dragging { border-color: #4c6ef5 !important; background-color: rgba(76,110,245,0.08) !important; }
+
+    /* ── Progress bar animated fill ── */
+    .progress-fill { transition: width 0.3s ease; }
+
+    /* ── Page sections: controlled via JS class toggling ── */
+    .page { display: none; }
+    .page.active { display: block; animation: fadeIn 0.25s ease forwards; }
+
+    /* ── Status dot pulse ── */
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+    .dot-pulse { animation: dotPulse 2s ease-in-out infinite; }
+
+    /* ── Copy button flash ── */
+    @keyframes flashGreen {
+      0%,100% { background-color: transparent; }
+      50%      { background-color: rgba(34,197,94,0.15); }
+    }
+    .copy-flash { animation: flashGreen 0.6s ease; }
+
+    /* ── Input focus ring ── */
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #4c6ef5 !important;
+      box-shadow: 0 0 0 3px rgba(76,110,245,0.15);
+    }
+
+    /* ── Button base ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: none;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #4c6ef5; color: white; }
+    .btn-primary:hover { background: #3451d1; }
+    .btn-primary:disabled { background: #2a3045; color: #64748b; cursor: not-allowed; }
+    .btn-secondary { background: #1d2333; color: #cbd5e1; border: 1px solid #2a3045; }
+    .btn-secondary:hover { background: #232b3e; border-color: #3a4560; }
+    .btn-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .btn-ghost { background: transparent; color: #94a3b8; padding: 8px 12px; }
+    .btn-ghost:hover { color: #e2e8f0; background: #1d2333; }
+
+    /* ── Card / Panel ── */
+    .card {
+      background: #1d2333;
+      border: 1px solid #2a3045;
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-blue { background: rgba(76,110,245,0.15); color: #6b8eff; }
+    .badge-green { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .badge-red { background: rgba(239,68,68,0.12); color: #f87171; }
+    .badge-gray { background: #1d2333; color: #64748b; border: 1px solid #2a3045; }
+    .badge-yellow { background: rgba(234,179,8,0.12); color: #facc15; }
+
+    /* ── File row ── */
+    .file-row {
+      background: #161b27;
+      border: 1px solid #2a3045;
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    /* ── Mobile: safe area bottom padding so content clears home bar ── */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      main { padding-bottom: env(safe-area-inset-bottom); }
+    }
+
+    /* ── Mobile: ensure buttons have min 44px tap target height ── */
+    @media (max-width: 640px) {
+      .btn { min-height: 44px; }
+      /* card padding override utility — Tailwind !p-4 shorthand */
+      .card { padding: 16px; }
+    }
+
+    /* ── Prevent iOS from zooming in on input focus (font-size must be ≥16px) ── */
+    @media (max-width: 640px) {
+      input[type="text"] { font-size: 16px; }
+    }
+
+    /* ── File row smaller padding on mobile ── */
+    @media (max-width: 640px) {
+      .file-row { padding: 10px 12px; }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen font-sans antialiased">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       NAVBAR
+       Fixed top bar with brand name, connection status indicator, and a
+       "Disconnect" button that only appears once the user is in a room.
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <nav class="fixed top-0 inset-x-0 z-50 border-b border-[#2a3045] bg-[#0f1117]/90 backdrop-blur-sm">
+    <div class="max-w-5xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2">
+
+      <!-- Brand -->
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="4" cy="11" r="3" fill="#4c6ef5"/>
+          <circle cx="18" cy="11" r="3" fill="#4c6ef5"/>
+          <path d="M7 11h8" stroke="#4c6ef5" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
+          <circle cx="4" cy="11" r="1.5" fill="white"/>
+          <circle cx="18" cy="11" r="1.5" fill="white"/>
+        </svg>
+        <span class="font-semibold text-white tracking-tight">PeerDrop</span>
+        <!-- Hide WebRTC badge on very small screens to save space -->
+        <span class="badge badge-blue text-[11px] py-0.5 hidden sm:inline-flex">WebRTC</span>
+      </div>
+
+      <!-- Right side: status + room chip + disconnect -->
+      <div class="flex items-center gap-2 min-w-0">
+        <!-- Status dot + label: label hidden on mobile, dot always visible -->
+        <div id="nav-status" class="hidden items-center gap-1.5 flex-shrink-0">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-400 dot-pulse flex-shrink-0"></span>
+          <!-- Label hidden on xs, shown sm+ -->
+          <span id="status-label" class="text-xs text-slate-400 hidden sm:inline">Connecting…</span>
+        </div>
+        <!-- Room ID chip: truncated font on mobile -->
+        <div id="nav-room-chip" class="hidden flex-shrink-0">
+          <span class="badge badge-gray font-mono text-[11px] sm:text-xs" id="nav-room-id-label">—</span>
+        </div>
+        <!-- Disconnect: icon-only on mobile, icon+label on sm+ -->
+        <button id="btn-disconnect" class="btn btn-ghost hidden text-xs px-2 sm:px-3" onclick="handleDisconnect()">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/></svg>
+          <span class="hidden sm:inline">Leave room</span>
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MAIN WRAPPER — offset below navbar
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <main class="pt-14 min-h-screen">
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 1 — LANDING / ROLE SELECT
+         The entry point. User picks whether they are a Sender or Receiver.
+         This sets the entire flow: senders create rooms, receivers join them.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-landing" class="page active max-w-xl mx-auto px-4 pt-12 sm:pt-20 pb-12 sm:pb-16 text-center">
+
+      <!-- Hero -->
+      <div class="mb-8 sm:mb-10">
+        <h1 class="text-2xl sm:text-3xl font-bold text-white mb-3 tracking-tight">
+          Direct file transfer,<br/>no middlemen.
+        </h1>
+        <p class="text-slate-400 text-sm sm:text-base leading-relaxed">
+          Files travel peer-to-peer through WebRTC. Nothing is uploaded to a server.
+          <br class="hidden sm:block"/>
+          <span class="sm:hidden"> </span>Pick your role to get started.
+        </p>
+      </div>
+
+      <!-- Role cards: 2 cols on all sizes, but tighter padding on mobile -->
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+
+        <!-- SENDER -->
+        <button
+          onclick="selectRole('sender')"
+          class="card text-left hover:border-brand-500 transition-all duration-200 cursor-pointer group hover:bg-[#1a2040] !p-4 sm:!p-6"
+        >
+          <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-brand-500/15 flex items-center justify-center mb-3 sm:mb-4 group-hover:bg-brand-500/25 transition-colors">
+            <svg width="20" height="20" fill="none" stroke="#4c6ef5" stroke-width="1.8" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-white mb-1 text-sm sm:text-base">Send files</h3>
+          <p class="text-xs text-slate-400 leading-relaxed hidden sm:block">Create a room and share files with connected peers.</p>
+          <p class="text-xs text-slate-400 leading-relaxed sm:hidden">Create a room &amp; share files.</p>
+        </button>
+
+        <!-- RECEIVER -->
+        <button
+          onclick="selectRole('receiver')"
+          class="card text-left hover:border-brand-500 transition-all duration-200 cursor-pointer group hover:bg-[#1a2040] !p-4 sm:!p-6"
+        >
+          <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-brand-500/15 flex items-center justify-center mb-3 sm:mb-4 group-hover:bg-brand-500/25 transition-colors">
+            <svg width="20" height="20" fill="none" stroke="#4c6ef5" stroke-width="1.8" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V3"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-white mb-1 text-sm sm:text-base">Receive files</h3>
+          <p class="text-xs text-slate-400 leading-relaxed hidden sm:block">Enter a room code to receive files from a sender.</p>
+          <p class="text-xs text-slate-400 leading-relaxed sm:hidden">Enter a code to receive files.</p>
+        </button>
+
+      </div>
+
+      <!-- Info strip: wraps to column on very small screens -->
+      <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-500">
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          End-to-end encrypted
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          No size limits
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Direct transfer
+        </span>
+      </div>
+
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 2A — SENDER SETUP
+         Sender creates (or gets assigned) a room ID, sees connection status,
+         adds files, and initiates the transfer.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-sender" class="page max-w-3xl mx-auto px-3 sm:px-4 pt-6 sm:pt-10 pb-16">
+
+      <!-- Page header -->
+      <div class="flex items-center gap-2 sm:gap-3 mb-6 sm:mb-8">
+        <button onclick="goBack()" class="btn btn-ghost p-2 flex-shrink-0">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="min-w-0">
+          <h2 class="text-lg sm:text-xl font-bold text-white">Send files</h2>
+          <p class="text-xs text-slate-400 mt-0.5 hidden sm:block">Share your room code with the receiver, then add files.</p>
+        </div>
+        <div class="ml-auto flex-shrink-0">
+          <span class="badge badge-blue">Sender</span>
+        </div>
+      </div>
+
+      <!-- On mobile: single column stack. On lg: 5-col grid -->
+      <div class="flex flex-col lg:grid lg:grid-cols-5 gap-4 sm:gap-5">
+
+        <!-- LEFT: Room info + file drop -->
+        <div class="lg:col-span-3 flex flex-col gap-4 sm:gap-5">
+
+          <!-- Room ID card -->
+          <div class="card !p-4 sm:!p-6">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Your room code</p>
+            <div class="flex items-center gap-3">
+              <span id="sender-room-id" class="font-mono text-xl sm:text-2xl font-bold text-white tracking-[0.15em] select-all">——————</span>
+              <button
+                id="btn-copy-room"
+                onclick="copyRoomId()"
+                class="btn btn-secondary text-xs ml-auto flex-shrink-0"
+                title="Copy room code"
+              >
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">Share this 6-character code with whoever needs to receive files.</p>
+          </div>
+
+          <!-- File drop zone — smaller padding on mobile, full padding on sm+ -->
+          <div
+            id="sender-drop-zone"
+            class="drop-zone border-2 border-dashed border-[#2a3045] rounded-2xl p-6 sm:p-10 text-center cursor-pointer transition-all duration-200 hover:border-brand-400 hover:bg-brand-500/5"
+            onclick="triggerFileInput()"
+            ondragover="onDragOver(event)"
+            ondragleave="onDragLeave(event)"
+            ondrop="onDrop(event)"
+          >
+            <input type="file" id="file-input" class="hidden" multiple onchange="onFileInputChange(event)" />
+            <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-brand-500/10 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+              <svg width="24" height="24" fill="none" stroke="#4c6ef5" stroke-width="1.6" viewBox="0 0 24 24">
+                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+              </svg>
+            </div>
+            <p class="text-white font-medium mb-1 text-sm sm:text-base">Drop files here</p>
+            <p class="text-xs sm:text-sm text-slate-400">or tap to browse — any type, any size</p>
+          </div>
+
+          <!-- Selected files list -->
+          <div id="sender-file-list" class="hidden flex flex-col gap-3">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Files queued</p>
+              <button onclick="clearFiles()" class="btn btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300 hover:bg-red-400/10">Clear all</button>
+            </div>
+            <div id="sender-files-container" class="flex flex-col gap-2"></div>
+            <div class="flex items-center justify-between mt-1 px-1">
+              <span class="text-xs text-slate-500" id="sender-file-count">0 files</span>
+              <span class="text-xs text-slate-400 font-mono" id="sender-total-size">0 B</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: Status panel + Send button -->
+        <div class="lg:col-span-2 flex flex-col gap-4 sm:gap-5">
+
+          <!-- Connection status panel -->
+          <div class="card !p-4 sm:!p-6">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-4">Connection</p>
+
+            <div class="flex flex-col gap-3">
+
+              <!-- Step: Room created -->
+              <div class="flex items-center gap-3" id="step-room-created">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500/15">
+                  <svg width="13" height="13" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-white">Room created</p>
+                  <p class="text-xs text-slate-400">Waiting for receiver…</p>
+                </div>
+                <span class="badge badge-green ml-auto text-xs flex-shrink-0">Done</span>
+              </div>
+
+              <!-- Step: Peer connected -->
+              <div class="flex items-center gap-3" id="step-peer-connected">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-[#2a3045] dot-pulse" id="step-peer-dot">
+                  <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#64748b"/></svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-slate-300" id="step-peer-label">Peer</p>
+                  <p class="text-xs text-slate-500" id="step-peer-sub">Waiting for receiver to join</p>
+                </div>
+                <span class="badge badge-gray ml-auto text-xs flex-shrink-0" id="badge-peer">Waiting</span>
+              </div>
+
+              <!-- Step: Data channel -->
+              <div class="flex items-center gap-3" id="step-data-channel">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-[#2a3045]" id="step-dc-dot">
+                  <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#64748b"/></svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-slate-500">Data channel</p>
+                  <p class="text-xs text-slate-600" id="step-dc-sub">Opens after peer joins</p>
+                </div>
+                <span class="badge badge-gray ml-auto text-xs flex-shrink-0" id="badge-dc">Pending</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Peer info (shown once peer connects) -->
+          <div id="peer-info-card" class="card hidden !p-4 sm:!p-6">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Peer info</p>
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-400 flex-shrink-0" id="peer-avatar">P</div>
+              <div class="min-w-0">
+                <p class="text-sm text-white font-medium truncate" id="peer-name">—</p>
+                <p class="text-xs text-slate-400" id="peer-meta">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Send button — full width, larger tap target on mobile -->
+          <button
+            id="btn-send-files"
+            onclick="startTransfer()"
+            class="btn btn-primary w-full justify-center text-sm py-3 sm:py-2.5 disabled:opacity-40"
+            disabled
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+            </svg>
+            Send files
+          </button>
+
+          <!-- Transfer state (shown during active transfer) -->
+          <div id="transfer-status-block" class="hidden card !p-4 sm:!p-6">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Transfer</p>
+              <span id="transfer-speed" class="text-xs font-mono text-brand-400">0 KB/s</span>
+            </div>
+            <div class="w-full bg-[#2a3045] rounded-full h-2 mb-2 overflow-hidden">
+              <div id="overall-progress-bar" class="progress-fill h-2 rounded-full bg-brand-500" style="width:0%"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-500 truncate pr-2" id="transfer-file-progress">File 0 of 0</span>
+              <span class="text-xs font-mono text-white flex-shrink-0" id="transfer-pct">0%</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 2B — RECEIVER SETUP
+         Receiver enters the room code and waits for the sender to push files.
+         Once connected, they see incoming file metadata + download progress.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-receiver" class="page max-w-3xl mx-auto px-3 sm:px-4 pt-6 sm:pt-10 pb-16">
+
+      <!-- Page header -->
+      <div class="flex items-center gap-2 sm:gap-3 mb-6 sm:mb-8">
+        <button onclick="goBack()" class="btn btn-ghost p-2 flex-shrink-0">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="min-w-0">
+          <h2 class="text-lg sm:text-xl font-bold text-white">Receive files</h2>
+          <p class="text-xs text-slate-400 mt-0.5 hidden sm:block">Enter the room code shared by the sender.</p>
+        </div>
+        <div class="ml-auto flex-shrink-0">
+          <span class="badge" style="background:rgba(52,199,89,0.12);color:#4ade80;">Receiver</span>
+        </div>
+      </div>
+
+      <!-- Single column on mobile, 5-col grid on lg -->
+      <div class="flex flex-col lg:grid lg:grid-cols-5 gap-4 sm:gap-5">
+
+        <!-- LEFT: Join form + incoming files -->
+        <div class="lg:col-span-3 flex flex-col gap-4 sm:gap-5">
+
+          <!-- Join room card -->
+          <div id="join-room-card" class="card !p-4 sm:!p-6">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3 sm:mb-4">Room code</p>
+            <div class="flex gap-2 sm:gap-3">
+              <input
+                id="room-code-input"
+                type="text"
+                inputmode="text"
+                autocapitalize="characters"
+                autocomplete="off"
+                placeholder="AB12CD"
+                maxlength="6"
+                class="flex-1 min-w-0 bg-[#161b27] border border-[#2a3045] rounded-xl px-3 sm:px-4 py-3 text-white font-mono text-base sm:text-lg tracking-[0.15em] uppercase placeholder:text-slate-600 placeholder:normal-case placeholder:text-sm placeholder:tracking-normal"
+                oninput="onRoomCodeInput(this)"
+              />
+              <button
+                id="btn-join-room"
+                onclick="joinRoom()"
+                class="btn btn-primary flex-shrink-0 px-4 sm:px-5 py-3"
+                disabled
+              >
+                Join
+              </button>
+            </div>
+            <p id="join-error" class="text-xs text-red-400 mt-2 hidden">Room not found. Check the code and try again.</p>
+          </div>
+
+          <!-- Connection status (shown after joining) -->
+          <div id="receiver-status-card" class="card hidden !p-4 sm:!p-6">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center bg-brand-500/15 flex-shrink-0" id="receiver-status-icon">
+                <svg class="animate-spin" width="16" height="16" fill="none" stroke="#4c6ef5" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0"/></svg>
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm text-white" id="receiver-status-label">Connecting to peer…</p>
+                <p class="text-xs text-slate-400 truncate" id="receiver-status-sub">Establishing WebRTC data channel</p>
+              </div>
+              <span class="badge ml-auto flex-shrink-0" id="receiver-status-badge" style="background:rgba(234,179,8,0.12);color:#facc15;">Connecting</span>
+            </div>
+          </div>
+
+          <!-- Incoming files area (shown once transfer begins) -->
+          <div id="receiver-files-section" class="hidden flex flex-col gap-3">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Incoming files</p>
+            <div id="receiver-files-container" class="flex flex-col gap-3"></div>
+          </div>
+
+          <!-- All done state -->
+          <div id="receiver-done-card" class="card hidden !p-4 sm:!p-6" style="border-color:rgba(74,222,128,0.2)">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                <svg width="18" height="18" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-white">All files received</p>
+                <p class="text-xs text-slate-400">Your files are ready to save.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: Sender info + overall progress + tips
+             On mobile these show BELOW the left column (natural stacking)
+             On lg they sit in the sidebar -->
+        <div class="lg:col-span-2 flex flex-col gap-4 sm:gap-5">
+
+          <!-- Sender info (shown after connect) -->
+          <div id="sender-info-card" class="card hidden !p-4 sm:!p-6">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Sender</p>
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-400 flex-shrink-0" id="sender-avatar">S</div>
+              <div class="min-w-0">
+                <p class="text-sm text-white font-medium truncate" id="sender-name">—</p>
+                <p class="text-xs text-slate-400" id="sender-meta">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overall receive progress -->
+          <div id="receiver-overall-block" class="card hidden !p-4 sm:!p-6">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Overall</p>
+              <span id="recv-speed" class="text-xs font-mono text-green-400">—</span>
+            </div>
+            <div class="w-full bg-[#2a3045] rounded-full h-2 mb-2 overflow-hidden">
+              <div id="recv-overall-bar" class="progress-fill h-2 rounded-full" style="width:0%; background:#4ade80;"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-500 truncate pr-2" id="recv-file-label">Waiting…</span>
+              <span class="text-xs font-mono text-white flex-shrink-0" id="recv-pct">0%</span>
+            </div>
+          </div>
+
+          <!-- Tips while waiting -->
+          <div id="receiver-tips" class="card !p-4 sm:!p-6" style="border-style:dashed">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">How it works</p>
+            <ol class="flex flex-col gap-3 text-xs text-slate-400">
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">1.</span>
+                Enter the 6-character room code from the sender.
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">2.</span>
+                Wait for the WebRTC data channel to open.
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">3.</span>
+                Files arrive directly — save each one when ready.
+              </li>
+            </ol>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 3 — TRANSFER COMPLETE (Sender side)
+         Shown after all files have been pushed. Summary of what was sent.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-complete" class="page max-w-xl mx-auto px-4 pt-12 sm:pt-20 pb-12 sm:pb-16 text-center">
+
+      <!-- Success icon -->
+      <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-5 sm:mb-6">
+        <svg width="30" height="30" fill="none" stroke="#4ade80" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+      </div>
+
+      <h2 class="text-xl sm:text-2xl font-bold text-white mb-2">Transfer complete</h2>
+      <p class="text-slate-400 text-sm mb-6 sm:mb-8" id="complete-summary">All files sent successfully.</p>
+
+      <!-- Sent files summary -->
+      <div id="complete-file-list" class="text-left mb-6 sm:mb-8 flex flex-col gap-2"></div>
+
+      <!-- Actions: stack vertically on mobile, side by side on sm+ -->
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button onclick="sendMoreFiles()" class="btn btn-secondary justify-center">Send more files</button>
+        <button onclick="goHome()" class="btn btn-primary justify-center">Back to home</button>
+      </div>
+
+    </div>
+
+  </main>
+
+
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TOAST NOTIFICATIONS
+       Lightweight toast system — appears top-right, auto-dismisses.
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="toast-container" class="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-80 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       JAVASCRIPT — WebRTC P2P Transfer Platform
+       ───────────────────────────────────────────────────────────────────────
+       Architecture overview:
+       ─────────────────────
+       The UI is entirely decoupled from the WebRTC/signaling layer.
+       All WebRTC calls are funnelled through a single `PeerConnection` object
+       defined at the bottom of this script. UI functions call into it, and it
+       fires callbacks that update the UI.
+
+       Pages / state machine:
+       ──────────────────────
+         landing  →  sender-setup  →  (transfer)  →  complete
+         landing  →  receiver-setup →  (incoming files)
+
+       The global `appState` object is the single source of truth for:
+         • which role the user has chosen (sender / receiver)
+         • the current room ID
+         • the list of queued files (sender)
+         • transfer progress
+
+       Wiring to your real backend:
+       ─────────────────────────────
+       Search for "BACKEND:" comments — those mark every place where you need
+       to plug in your actual WebSocket / signaling calls and WebRTC logic.
+       The rest is purely UI/UX.
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+
+        <!-- Socket.IO -->
+<script src="/socket.io/socket.io.js"></script>
+
+  <!-- Your WebRTC script -->
+  <script type="module" src="script.js"></script>
+  <script  type="module" src="socketEvents.js"></script>
+    <script type="module" src="socket.js"></script>
+    <script type="module" src="dataChannel.js"></script>
+        <script type="module" src="webRTCConnection.js"></script>
+    
+
+
+  <script>
+    /* ─────────────────────────────────────────────────────────────────────────
+       APP STATE
+       A single plain object that holds everything the UI needs to know.
+       Mutate via helper functions, never directly from event handlers.
+       ───────────────────────────────────────────────────────────────────────── */
+
+
+    const appState = {
+      role:       null,        // 'sender' | 'receiver'
+      roomId:     null,        // 6-char string
+      files:      [],          // Array<File>  — sender only
+      peerName:   null,        // Display name of the remote peer
+      connected:  false,       // Whether the WebRTC data channel is open
+      transferring: false,     // Transfer in progress
+    };
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       PAGE ROUTER
+       Simple show/hide mechanism. Each "page" is a <div id="page-*">.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Show a single page by its ID and hide all others.
+     * @param {string} pageId - The suffix after "page-" e.g. "sender"
+     */
+    function showPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      const target = document.getElementById('page-' + pageId);
+      if (target) target.classList.add('active');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       ROLE SELECTION
+       Called when user clicks a role card on the landing page.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Select sender or receiver role, update state, and navigate to the
+     * appropriate setup page.
+     * @param {'sender'|'receiver'} role
+     */
+    function selectRole(role) {
+      appState.role = role;
+
+      if (role === 'sender') {
+        // Generate a room ID and show sender page
+        const roomId = generateRoomId();
+        appState.roomId = roomId;
+        initSenderPage(roomId);
+        showPage('sender');
+
+        // BACKEND: Create a room on your signaling server here.
+        //   e.g. signalingSocket.emit('create-room', { roomId });
+        //   Then listen for 'peer-joined' events.
+
+      } else {
+        // Navigate to receiver page (user will type room code there)
+        initReceiverPage();
+        showPage('receiver');
+      }
+
+      // Show nav chrome
+      showNavChrome(role);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       ROOM ID GENERATION
+       Generates a random 6-character alphanumeric room code.
+       In production, your server should assign room IDs to prevent collisions.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Generate a random 6-character uppercase alphanumeric room ID.
+     * @returns {string}
+     */
+    function generateRoomId() {
+      // BACKEND: Replace this with a server-assigned room ID if needed.
+      //const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
+      return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       SENDER PAGE INIT
+       Populates the room ID, resets file state.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Initialize the sender page UI.
+     * @param {string} roomId
+     */
+    function initSenderPage(roomId) {
+      document.getElementById('sender-room-id').textContent = roomId;
+      document.getElementById('nav-room-id-label').textContent = roomId;
+      appState.files = [];
+      renderSenderFiles();
+      setSendButtonState();
+
+      // Simulate peer joining after a delay for demonstration
+      // BACKEND: Remove this and instead react to real 'peer-joined' WebSocket events.
+      simulatePeerJoin();
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       RECEIVER PAGE INIT
+       Resets the receiver page to the "enter code" state.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    function initReceiverPage() {
+      // Reset join form
+      const input = document.getElementById('room-code-input');
+      if (input) input.value = '';
+      document.getElementById('btn-join-room').disabled = true;
+      document.getElementById('join-error').classList.add('hidden');
+      document.getElementById('receiver-status-card').classList.add('hidden');
+      document.getElementById('receiver-files-section').classList.add('hidden');
+      document.getElementById('receiver-done-card').classList.add('hidden');
+      document.getElementById('receiver-overall-block').classList.add('hidden');
+      document.getElementById('sender-info-card').classList.add('hidden');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       NAV CHROME
+       Shows/hides the navbar status indicator, room chip, disconnect button.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Show the nav chrome (status, room chip, disconnect) appropriate for the role.
+     * @param {'sender'|'receiver'} role
+     */
+    function showNavChrome(role) {
+      document.getElementById('nav-status').classList.remove('hidden');
+      document.getElementById('nav-status').classList.add('flex');
+      document.getElementById('nav-room-chip').classList.remove('hidden');
+      document.getElementById('btn-disconnect').classList.remove('hidden');
+      setNavStatus('waiting', 'Waiting for peer…');
+    }
+
+    /**
+     * Update the nav status dot and label.
+     * @param {'waiting'|'connecting'|'connected'|'transferring'|'done'} state
+     * @param {string} label
+     */
+    function setNavStatus(state, label) {
+      const dot   = document.getElementById('status-dot');
+      const lbl   = document.getElementById('status-label');
+      lbl.textContent = label;
+
+      // Dot color map
+      const colors = {
+        waiting:     'bg-yellow-400',
+        connecting:  'bg-blue-400',
+        connected:   'bg-green-400',
+        transferring:'bg-blue-400',
+        done:        'bg-green-400',
+      };
+      dot.className = `w-2 h-2 rounded-full ${colors[state] || 'bg-slate-400'} ${state !== 'done' ? 'dot-pulse' : ''}`;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       COPY ROOM ID
+       Copies the room ID to clipboard and flashes the button green.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    function copyRoomId() {
+      navigator.clipboard.writeText(appState.roomId).then(() => {
+        const btn = document.getElementById('btn-copy-room');
+        btn.classList.add('copy-flash');
+        btn.innerHTML = `
+          <svg width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          Copied!`;
+        setTimeout(() => {
+          btn.classList.remove('copy-flash');
+          btn.innerHTML = `
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy`;
+        }, 2000);
+        showToast('Room code copied!', 'success');
+      });
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       FILE INPUT — SENDER
+       Handles both click-to-browse and drag-and-drop.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /** Open the hidden file <input> */
+    function triggerFileInput() {
+      document.getElementById('file-input').click();
+    }
+
+    /** Prevent default so drag enters work correctly */
+    function onDragOver(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      document.getElementById('sender-drop-zone').classList.add('dragging');
+    }
+
+    function onDragLeave(event) {
+      document.getElementById('sender-drop-zone').classList.remove('dragging');
+    }
+
+    /**
+     * Handle files dropped into the drop zone.
+     * @param {DragEvent} event
+     */
+    function onDrop(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      document.getElementById('sender-drop-zone').classList.remove('dragging');
+      const droppedFiles = Array.from(event.dataTransfer.files);
+      addFilesToQueue(droppedFiles);
+    }
+
+    /**
+     * Handle files selected via the file <input>.
+     * @param {Event} event
+     */
+    function onFileInputChange(event) {
+      const selectedFiles = Array.from(event.target.files);
+      addFilesToQueue(selectedFiles);
+      event.target.value = ''; // reset so same file can be re-added
+    }
+
+    /**
+     * Merge new files into the queue, avoid exact duplicates (same name + size).
+     * @param {File[]} newFiles
+     */
+    function addFilesToQueue(newFiles) {
+      const existingKeys = new Set(appState.files.map(f => f.name + f.size));
+      const unique = newFiles.filter(f => !existingKeys.has(f.name + f.size));
+      appState.files.push(...unique);
+
+      if (unique.length !== newFiles.length) {
+        showToast(`${newFiles.length - unique.length} duplicate(s) skipped`, 'warn');
+      }
+
+      renderSenderFiles();
+      setSendButtonState();
+    }
+
+    /**
+     * Remove a file from the queue by its index.
+     * @param {number} index
+     */
+    function removeFile(index) {
+      appState.files.splice(index, 1);
+      renderSenderFiles();
+      setSendButtonState();
+    }
+
+    /** Clear all queued files */
+    function clearFiles() {
+      appState.files = [];
+      renderSenderFiles();
+      setSendButtonState();
+    }
+
+    /** Render the file list rows in the sender panel */
+    function renderSenderFiles() {
+      const container = document.getElementById('sender-files-container');
+      const section   = document.getElementById('sender-file-list');
+
+      if (appState.files.length === 0) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      section.classList.remove('hidden');
+      container.innerHTML = appState.files.map((file, i) => `
+        <div class="file-row flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+               style="background:rgba(76,110,245,0.12)">
+            ${fileTypeIcon(file.name)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-white truncate" title="${escHtml(file.name)}">${escHtml(file.name)}</p>
+            <p class="text-xs text-slate-500">${formatBytes(file.size)}</p>
+          </div>
+          <button onclick="removeFile(${i})" class="btn btn-ghost p-1.5 text-slate-500 hover:text-red-400" title="Remove">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      `).join('');
+
+      // Totals
+      const totalBytes = appState.files.reduce((s, f) => s + f.size, 0);
+      document.getElementById('sender-file-count').textContent = `${appState.files.length} file${appState.files.length !== 1 ? 's' : ''}`;
+      document.getElementById('sender-total-size').textContent = formatBytes(totalBytes);
+    }
+
+    /**
+     * Enable or disable the Send button based on readiness:
+     * user must have files queued AND be connected to a peer.
+     */
+    function setSendButtonState() {
+      const ready = appState.files.length > 0 && appState.connected;
+      document.getElementById('btn-send-files').disabled = !ready;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       RECEIVER — JOIN ROOM
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Called on every keypress in the room code input.
+     * Enables Join button only once 6 chars are entered.
+     * @param {HTMLInputElement} input
+     */
+    function onRoomCodeInput(input) {
+      input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      document.getElementById('btn-join-room').disabled = input.value.length < 6;
+      document.getElementById('join-error').classList.add('hidden');
+    }
+
+    /** Attempt to join a room as receiver */
+    function joinRoom() {
+      const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+      if (code.length !== 6) return;
+
+      appState.roomId = code;
+      document.getElementById('nav-room-id-label').textContent = code;
+
+      // Lock the form while connecting
+      document.getElementById('room-code-input').disabled = true;
+      document.getElementById('btn-join-room').disabled = true;
+
+      // Show connecting state
+      document.getElementById('receiver-status-card').classList.remove('hidden');
+      setNavStatus('connecting', 'Connecting…');
+
+      // BACKEND: Send a 'join-room' request to your signaling server here.
+      //   e.g. signalingSocket.emit('join-room', { roomId: code });
+      //   Then listen for 'room-joined' (success) or 'room-not-found' (error).
+      //   On success: call onReceiverConnected()
+      //   On error:   call onRoomNotFound()
+      // 
+      // For now, we simulate with a timeout:
+      simulateReceiverConnect(code);
+    }
+
+    /**
+     * Called when the receiver has successfully connected and the data channel is open.
+     * @param {string} senderName - Display name of the sender (from signaling server)
+     */
+    function onReceiverConnected(senderName) {
+      appState.connected = true;
+      setNavStatus('connected', 'Connected');
+
+      // Update status card
+      document.getElementById('receiver-status-icon').innerHTML = `
+        <svg width="16" height="16" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`;
+      document.getElementById('receiver-status-label').textContent = 'Peer connected';
+      document.getElementById('receiver-status-sub').textContent   = 'Waiting for sender to start transfer…';
+      document.getElementById('receiver-status-badge').textContent = 'Ready';
+      document.getElementById('receiver-status-badge').className   = 'badge ml-auto badge-green';
+
+      // Show sender info
+      if (senderName) {
+        appState.peerName = senderName;
+        document.getElementById('sender-avatar').textContent   = senderName.charAt(0).toUpperCase();
+        document.getElementById('sender-name').textContent     = senderName;
+        document.getElementById('sender-meta').textContent     = 'Sender';
+        document.getElementById('sender-info-card').classList.remove('hidden');
+      }
+
+      showToast('Connected to sender!', 'success');
+    }
+
+    /** Called when the room code doesn't match any active room */
+    function onRoomNotFound() {
+      document.getElementById('room-code-input').disabled  = false;
+      document.getElementById('btn-join-room').disabled    = false;
+      document.getElementById('join-error').classList.remove('hidden');
+      document.getElementById('receiver-status-card').classList.add('hidden');
+      showToast('Room not found', 'error');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       SENDER — PEER JOINED HANDLER
+       Called by your signaling server when a receiver enters the room.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Update sender UI once a peer has joined the room.
+     * @param {string} peerName - Display name of the receiver
+     */
+    function onPeerJoined(peerName) {
+      // Update connection steps
+      const dot   = document.getElementById('step-peer-dot');
+      const label = document.getElementById('step-peer-label');
+      const sub   = document.getElementById('step-peer-sub');
+      const badge = document.getElementById('badge-peer');
+
+      dot.className = 'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500/15';
+      dot.innerHTML = `<svg width="13" height="13" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`;
+      label.textContent = peerName || 'Receiver';
+      label.className   = 'text-sm text-white';
+      sub.textContent   = 'Peer is ready to receive';
+      badge.textContent = 'Connected';
+      badge.className   = 'badge badge-green ml-auto text-xs';
+
+      // Data channel step
+      setTimeout(() => {
+        // Simulate data channel opening shortly after peer connects
+        // BACKEND: Replace with real data channel open event
+        onDataChannelOpen();
+      }, 800);
+
+      // Show peer info card
+      if (peerName) {
+        appState.peerName = peerName;
+        document.getElementById('peer-avatar').textContent = peerName.charAt(0).toUpperCase();
+        document.getElementById('peer-name').textContent   = peerName;
+        document.getElementById('peer-meta').textContent   = 'Receiver · Ready';
+        document.getElementById('peer-info-card').classList.remove('hidden');
+      }
+
+      setNavStatus('connected', 'Peer connected');
+      showToast('Receiver joined the room!', 'success');
+    }
+
+    /**
+     * Called when the WebRTC data channel opens (both sides ready to transfer).
+     */
+    function onDataChannelOpen() {
+      appState.connected = true;
+
+      // Update data channel step
+      const dot   = document.getElementById('step-dc-dot');
+      const sub   = document.getElementById('step-dc-sub');
+      const badge = document.getElementById('badge-dc');
+
+      dot.className = 'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500/15';
+      dot.innerHTML = `<svg width="13" height="13" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`;
+      sub.textContent   = 'Open and ready';
+      badge.textContent = 'Open';
+      badge.className   = 'badge badge-green ml-auto text-xs';
+
+      setSendButtonState(); // Now enabled if files are queued
+      setNavStatus('connected', 'Ready to transfer');
+      showToast('Data channel open — you can now send files!', 'success');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       TRANSFER — SENDER SIDE
+       Reads files in chunks and sends them over the WebRTC data channel.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /** Start sending the queued files */
+    async function startTransfer() {
+      if (appState.files.length === 0 || !appState.connected) return;
+      appState.transferring = true;
+
+      // Show transfer status block
+      document.getElementById('transfer-status-block').classList.remove('hidden');
+      document.getElementById('btn-send-files').disabled = true;
+      setNavStatus('transferring', 'Sending…');
+
+      const files = appState.files;
+      const totalBytes = files.reduce((s, f) => s + f.size, 0);
+      let sentBytes = 0;
+      let startTime = Date.now();
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        // Update progress UI for current file
+        document.getElementById('transfer-file-progress').textContent = `File ${i + 1} of ${files.length}: ${file.name}`;
+
+        // BACKEND: Before reading file chunks, send a metadata message so the
+        // receiver knows the file name, size, and MIME type:
+        //   dataChannel.send(JSON.stringify({
+        //     type: 'file-meta',
+        //     name: file.name,
+        //     size: file.size,
+        //     mime: file.type || 'application/octet-stream',
+        //     index: i,
+        //     total: files.length,
+        //   }));
+
+        // Read and send the file in chunks (16 KB default for WebRTC data channels)
+        const CHUNK_SIZE = 16 * 1024; // 16 KB
+        const reader     = new FileReader();
+        let offset       = 0;
+
+        await new Promise((resolve, reject) => {
+          function readNextChunk() {
+            const slice = file.slice(offset, offset + CHUNK_SIZE);
+            reader.readAsArrayBuffer(slice);
+          }
+
+          reader.onload = (e) => {
+            const chunk = e.target.result;
+
+            // BACKEND: Send the chunk over the data channel:
+            //   dataChannel.send(chunk);
+
+            offset    += chunk.byteLength;
+            sentBytes += chunk.byteLength;
+
+            // ── Update progress ──────────────────────────────────────────
+            const overallPct = Math.round((sentBytes / totalBytes) * 100);
+            document.getElementById('overall-progress-bar').style.width = overallPct + '%';
+            document.getElementById('transfer-pct').textContent = overallPct + '%';
+
+            // Speed calculation
+            const elapsedSec = (Date.now() - startTime) / 1000;
+            const speed      = sentBytes / elapsedSec;
+            document.getElementById('transfer-speed').textContent = formatBytes(speed) + '/s';
+
+            if (offset < file.size) {
+              // More chunks remain for this file
+              // BACKEND: Check dataChannel.bufferedAmount before sending next chunk
+              // to avoid flooding the buffer. A typical threshold is 16 MB.
+              readNextChunk();
+            } else {
+              // File finished
+              // BACKEND: Send an 'end-of-file' signal:
+              //   dataChannel.send(JSON.stringify({ type: 'file-end', index: i }));
+              resolve();
+            }
+          };
+
+          reader.onerror = () => {
+            showToast(`Error reading ${file.name}`, 'error');
+            reject(reader.error);
+          };
+
+          readNextChunk();
+        }).catch(() => {}); // Continue with remaining files even if one fails
+      }
+
+      // All files sent
+      // BACKEND: Send a 'transfer-complete' signal:
+      //   dataChannel.send(JSON.stringify({ type: 'transfer-complete' }));
+
+      appState.transferring = false;
+      setNavStatus('done', 'Transfer complete');
+      showTransferComplete(files, totalBytes);
+    }
+
+    /** Navigate to the "Transfer complete" page with a summary */
+    function showTransferComplete(files, totalBytes) {
+      // Build summary list
+      const listEl = document.getElementById('complete-file-list');
+      listEl.innerHTML = files.map(f => `
+        <div class="file-row flex items-center gap-3">
+          <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-500/12">
+            ${fileTypeIcon(f.name)}
+          </div>
+          <span class="text-sm text-white flex-1 truncate">${escHtml(f.name)}</span>
+          <span class="text-xs font-mono text-slate-400">${formatBytes(f.size)}</span>
+          <span class="badge badge-green text-xs">Sent</span>
+        </div>
+      `).join('');
+
+      document.getElementById('complete-summary').textContent =
+        `${files.length} file${files.length !== 1 ? 's' : ''} · ${formatBytes(totalBytes)} transferred successfully.`;
+
+      showPage('complete');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       TRANSFER — RECEIVER SIDE
+       Your backend will call these functions when events arrive over the
+       WebRTC data channel.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Call this when the receiver gets a 'file-meta' message from the sender.
+     * Adds a new incoming file row with a progress bar.
+     *
+     * @param {{ name: string, size: number, mime: string, index: number, total: number }} meta
+     */
+    function onFileMetaReceived(meta) {
+      // Show the incoming files section
+      document.getElementById('receiver-files-section').classList.remove('hidden');
+      document.getElementById('receiver-overall-block').classList.remove('hidden');
+      document.getElementById('receiver-tips').classList.add('hidden');
+      setNavStatus('transferring', 'Receiving…');
+
+      // Create a row for this file
+      const container = document.getElementById('receiver-files-container');
+      const rowId     = 'recv-file-' + meta.index;
+
+      const row = document.createElement('div');
+      row.id        = rowId;
+      row.className = 'file-row flex flex-col gap-2';
+      row.innerHTML = `
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+               style="background:rgba(74,222,128,0.1)">
+            ${fileTypeIcon(meta.name)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-white truncate">${escHtml(meta.name)}</p>
+            <p class="text-xs text-slate-500">${formatBytes(meta.size)}</p>
+          </div>
+          <span class="badge badge-yellow text-xs" id="recv-badge-${meta.index}">Receiving</span>
+        </div>
+        <!-- Per-file progress bar -->
+        <div class="w-full bg-[#2a3045] rounded-full h-1.5 overflow-hidden">
+          <div id="recv-bar-${meta.index}" class="progress-fill h-1.5 rounded-full" style="width:0%; background:#4ade80;"></div>
+        </div>
+        <div id="recv-save-${meta.index}" class="hidden">
+          <!-- Save button injected after file is fully received -->
+        </div>
+      `;
+      container.appendChild(row);
+
+      document.getElementById('recv-file-label').textContent = `File ${meta.index + 1} of ${meta.total}`;
+    }
+
+    /**
+     * Call this when a chunk arrives for a file.
+     * Updates that file's progress bar.
+     *
+     * @param {number} fileIndex - Which file this chunk belongs to
+     * @param {number} receivedBytes - Total bytes received so far for this file
+     * @param {number} totalBytes - Total size of this file
+     * @param {number} overallPct - 0–100 overall progress across all files
+     * @param {number} speedBps - Current speed in bytes/sec
+     */
+    function onChunkReceived(fileIndex, receivedBytes, totalBytes, overallPct, speedBps) {
+      const pct = Math.round((receivedBytes / totalBytes) * 100);
+      const bar = document.getElementById(`recv-bar-${fileIndex}`);
+      if (bar) bar.style.width = pct + '%';
+
+      // Overall bar
+      document.getElementById('recv-overall-bar').style.width = overallPct + '%';
+      document.getElementById('recv-pct').textContent          = overallPct + '%';
+      document.getElementById('recv-speed').textContent        = formatBytes(speedBps) + '/s';
+    }
+
+    /**
+     * Call this when a complete file has been received and assembled.
+     * Shows a save/download button for that file.
+     *
+     * BACKEND: You'll accumulate ArrayBuffer chunks, combine them into a Blob,
+     * then call this function with the resulting Blob.
+     *
+     * @param {number} fileIndex
+     * @param {string} fileName
+     * @param {Blob} blob
+     */
+    function onFileComplete(fileIndex, fileName, blob) {
+      const badge   = document.getElementById(`recv-badge-${fileIndex}`);
+      if (badge) { badge.textContent = 'Done'; badge.className = 'badge badge-green text-xs'; }
+
+      const saveEl = document.getElementById(`recv-save-${fileIndex}`);
+      if (saveEl) {
+        const url = URL.createObjectURL(blob);
+        saveEl.classList.remove('hidden');
+        saveEl.innerHTML = `
+          <a href="${url}" download="${escHtml(fileName)}"
+             class="btn btn-secondary text-xs py-1.5 px-3 inline-flex">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V3"/>
+            </svg>
+            Save ${escHtml(fileName)}
+          </a>`;
+      }
+
+      showToast(`${fileName} ready to save!`, 'success');
+    }
+
+    /**
+     * Call this when all files have been received (sender signals 'transfer-complete').
+     */
+    function onTransferComplete() {
+      document.getElementById('receiver-done-card').classList.remove('hidden');
+      document.getElementById('recv-file-label').textContent = 'All files received';
+      document.getElementById('recv-overall-bar').style.width = '100%';
+      document.getElementById('recv-pct').textContent         = '100%';
+      setNavStatus('done', 'All files received');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       NAVIGATION HELPERS
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /** Go back to the landing page (role select) */
+    function goBack() {
+      // BACKEND: Close any open data channels or signaling connections here.
+      resetNavChrome();
+      appState.role      = null;
+      appState.roomId    = null;
+      appState.connected = false;
+      appState.files     = [];
+      showPage('landing');
+    }
+
+    /** Disconnect and go back to landing */
+    function handleDisconnect() {
+      // BACKEND: Close the peer connection and leave the room.
+      //   peerConnection.close();
+      //   signalingSocket.emit('leave-room', { roomId: appState.roomId });
+      showToast('Disconnected from room', 'warn');
+      goBack();
+    }
+
+    /** Reset nav to minimal state */
+    function resetNavChrome() {
+      document.getElementById('nav-status').classList.add('hidden');
+      document.getElementById('nav-room-chip').classList.add('hidden');
+      document.getElementById('btn-disconnect').classList.add('hidden');
+    }
+
+    /** Send more files in the same session */
+    function sendMoreFiles() {
+      appState.files     = [];
+      appState.transferring = false;
+      renderSenderFiles();
+      setSendButtonState();
+      document.getElementById('transfer-status-block').classList.add('hidden');
+      showPage('sender');
+    }
+
+    /** Go all the way home */
+    function goHome() {
+      resetNavChrome();
+      appState.role      = null;
+      appState.roomId    = null;
+      appState.connected = false;
+      appState.files     = [];
+      showPage('landing');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       TOAST NOTIFICATION SYSTEM
+       Lightweight, auto-dismissing notifications with 4 severity levels.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Show a toast notification.
+     * @param {string} message
+     * @param {'success'|'error'|'warn'|'info'} type
+     * @param {number} duration - ms before auto-dismiss (default 3500)
+     */
+    function showToast(message, type = 'info', duration = 3500) {
+      const styles = {
+        success: 'bg-green-500/10 border-green-500/25 text-green-300',
+        error:   'bg-red-500/10   border-red-500/25   text-red-300',
+        warn:    'bg-yellow-500/10 border-yellow-500/25 text-yellow-300',
+        info:    'bg-brand-500/10  border-brand-500/25  text-brand-300',
+      };
+      const icons = {
+        success: `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`,
+        error:   `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
+        warn:    `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`,
+        info:    `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>`,
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium shadow-lg animate-fade-in ${styles[type] || styles.info}`;
+      toast.innerHTML = `${icons[type] || icons.info}<span>${escHtml(message)}</span>`;
+
+      const container = document.getElementById('toast-container');
+      container.appendChild(toast);
+
+      // Auto-dismiss
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       UTILITY FUNCTIONS
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Human-readable byte sizes.
+     * @param {number} bytes
+     * @returns {string}
+     */
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS from file names.
+     * @param {string} str
+     * @returns {string}
+     */
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Return an inline SVG icon appropriate for a file extension.
+     * Falls back to a generic document icon.
+     * @param {string} fileName
+     * @returns {string} - SVG markup string
+     */
+    function fileTypeIcon(fileName) {
+      const ext = (fileName.split('.').pop() || '').toLowerCase();
+      const color = {
+        pdf:  '#f87171', doc: '#60a5fa', docx: '#60a5fa',
+        xls:  '#4ade80', xlsx: '#4ade80',
+        jpg:  '#fb923c', jpeg: '#fb923c', png: '#fb923c', gif: '#fb923c', webp: '#fb923c',
+        mp4:  '#a78bfa', mov: '#a78bfa', avi: '#a78bfa',
+        mp3:  '#f472b6', wav: '#f472b6', flac: '#f472b6',
+        zip:  '#facc15', rar: '#facc15', tar: '#facc15', gz: '#facc15',
+        txt:  '#94a3b8', md: '#94a3b8',
+        js:   '#facc15', ts: '#60a5fa', py: '#4ade80', html: '#fb923c',
+      }[ext] || '#6b8eff';
+
+      return `<svg width="16" height="16" fill="none" stroke="${color}" stroke-width="1.8" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      </svg>`;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       DEMO SIMULATIONS
+       These replace real signaling/WebRTC events for UI demonstration.
+       BACKEND: Delete everything in this section and wire up real events.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    /** Demo: simulate a peer joining ~3 seconds after sender creates the room */
+    function simulatePeerJoin() {
+      setTimeout(() => {
+        if (appState.role === 'sender' && !appState.connected) {
+          onPeerJoined('Alice (demo)');
+        }
+      }, 3000);
+    }
+
+    /**
+     * Demo: simulate the receiver connecting to a room.
+     * For a valid-looking code (non-empty), always "succeeds".
+     * @param {string} code
+     */
+    function simulateReceiverConnect(code) {
+      // Simulate network latency
+      setTimeout(() => {
+        if (code.length === 6) {
+          onReceiverConnected('Bob (demo sender)');
+          // Simulate incoming files after another delay
+          setTimeout(() => simulateIncomingFiles(), 2000);
+        } else {
+          onRoomNotFound();
+        }
+      }, 1500);
+    }
+
+    /**
+     * Demo: simulate the receiver getting 2 files.
+     * BACKEND: Remove this; your WebRTC message handler drives these calls.
+     */
+    function simulateIncomingFiles() {
+      if (appState.role !== 'receiver') return;
+
+      const fakeFiles = [
+        { name: 'project-brief.pdf',    size: 2.4  * 1024 * 1024, mime: 'application/pdf' },
+        { name: 'design-mockup.png',     size: 0.85 * 1024 * 1024, mime: 'image/png'       },
+      ];
+
+      fakeFiles.forEach((f, i) => {
+        setTimeout(() => {
+          onFileMetaReceived({ ...f, index: i, total: fakeFiles.length });
+
+          // Simulate chunk progress over 3 seconds
+          const steps     = 20;
+          const stepBytes = f.size / steps;
+          let received    = 0;
+          const interval  = setInterval(() => {
+            received += stepBytes;
+            if (received > f.size) received = f.size;
+
+            const overallPct = Math.round(
+              ((i * f.size + received) / fakeFiles.reduce((s, x) => s + x.size, 0)) * 100
+            );
+            onChunkReceived(i, received, f.size, overallPct, 250 * 1024);
+
+            if (received >= f.size) {
+              clearInterval(interval);
+              // Build a tiny blob just for the download demo
+              const blob = new Blob(['[demo file content]'], { type: f.mime });
+              onFileComplete(i, f.name, blob);
+
+              // If last file, signal transfer complete
+              if (i === fakeFiles.length - 1) {
+                setTimeout(onTransferComplete, 500);
+              }
+            }
+          }, 150);
+        }, i * 4000); // stagger each file
+      });
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       SENDER: DEMO TRANSFER SIMULATION
+       When "Send files" is pressed in demo mode (no real data channel),
+       we run a fake chunk loop so the progress bars animate.
+       BACKEND: This entire block is replaced by your real startTransfer() once
+       a real data channel exists — the existing startTransfer() function above
+       already reads real File objects and sends real chunks.
+       ───────────────────────────────────────────────────────────────────────── */
+
+    // Override startTransfer for demo mode (remove when wiring real WebRTC)
+    const _realStartTransfer = startTransfer;
+    startTransfer = function() {
+      if (!appState.connected) return;
+      if (appState.files.length === 0) return;
+
+      appState.transferring = true;
+      document.getElementById('transfer-status-block').classList.remove('hidden');
+      document.getElementById('btn-send-files').disabled = true;
+      setNavStatus('transferring', 'Sending…');
+
+      const files      = appState.files;
+      const totalBytes = files.reduce((s, f) => s + f.size, 0);
+      let   sentBytes  = 0;
+      let   fileIdx    = 0;
+      const startTime  = Date.now();
+
+      // Fake a chunk loop at ~500 KB/s
+      const FAKE_CHUNK = 64 * 1024;
+      let fileSent     = 0;
+
+      const interval = setInterval(() => {
+        const file = files[fileIdx];
+        fileSent  += FAKE_CHUNK;
+        sentBytes += FAKE_CHUNK;
+        if (fileSent > file.size) { sentBytes -= (fileSent - file.size); fileSent = file.size; }
+
+        const overallPct = Math.min(100, Math.round((sentBytes / totalBytes) * 100));
+        document.getElementById('overall-progress-bar').style.width = overallPct + '%';
+        document.getElementById('transfer-pct').textContent = overallPct + '%';
+        document.getElementById('transfer-file-progress').textContent =
+          `File ${fileIdx + 1} of ${files.length}: ${file.name}`;
+
+        const speed = (sentBytes / ((Date.now() - startTime) / 1000));
+        document.getElementById('transfer-speed').textContent = formatBytes(speed) + '/s';
+
+        if (fileSent >= file.size) {
+          fileIdx++;
+          fileSent = 0;
+          if (fileIdx >= files.length) {
+            clearInterval(interval);
+            appState.transferring = false;
+            setNavStatus('done', 'Transfer complete');
+            showTransferComplete(files, totalBytes);
+          }
+        }
+      }, 100);
+    };
+
+  </script>
+
+</body>
+</html>

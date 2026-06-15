@@ -1,144 +1,190 @@
 import { io } from "./app.js"
-import { generateRoomCode, joinRoom } from "./controllers/utills.controller.js";
+import { addOfferAndAnswer, generateRoomCode, joinRoom, addIceCandidates, roomCheck } from "./controllers/utills.controller.js";
 import { room } from "./models/room.model.js"
 
 
 
 ///////////////////////////// setting up WEBRTC
 const setupRTC = async () => {
-const offers = [
-    // offererUserName
-    // offer
-    // offerIceCandidates
-    // answererUserName
-    // answer
-    // answererIceCandidates
-];
+    const offers = [
+        // offererUserName
+        // offer
+        // offerIceCandidates
+        // answererUserName
+        // answer
+        // answererIceCandidates
+    ];
 
-const connectedSockets = []
+    const connectedSockets = []
 
-io.on("connection",async (socket) => {
-    console.log(`New user connected! socket id : ${socket.id}`)
+    io.on("connection", async (socket) => {
+        const userName = socket.handshake.auth.userName;
+        const password = socket.handshake.auth.password;
 
-    const roomCode = await generateRoomCode()
-    console.log(`room code rtc :${roomCode}`)
+        console.log(`New user connected! socket id : ${socket.id}`)
 
-    socket.emit("generatedRoomCode",roomCode)
-    
-    
-    await joinRoom(roomCode)
+        const roomCode = await generateRoomCode()
+        console.log(`room code rtc :${roomCode}`)
 
-    const userName = socket.handshake.auth.userName;
-    const password = socket.handshake.auth.password;
+        socket.on("isConnected", (d) => {
+            console.log("websocket is now connected")
+            socket.emit("generatedRoomCode", roomCode)
+        })
 
-    connectedSockets.push({
-        socketId: socket.id,
-        userName: userName
-    })
 
-    socket.on("newOffer", (newOffer) => {
-        console.log("recieved new offer")
-        const offerObj = {
-            offererUserName: userName,
-            offer: newOffer,
-            offerIceCandidates: [],
-            answererUserName: null,
-            answer: null,
-            answererIceCandidates: [],
+
+
+
+
+        const socketDetails = {
+            socketId: socket.id,
+            userName: userName
         }
-
-        offers.push(offerObj)
-        socket.broadcast.emit("newOfferAwaiting", [offerObj])
-    })
+        const joinNewSocket = await joinRoom(roomCode, socketDetails,"offerer")
+        console.log(joinNewSocket)
 
 
-    // -------------------------
-    // NEW ANSWER
-    // -------------------------
+        connectedSockets.push({
+            socketId: socket.id,
+            userName: userName
+        })
 
-    socket.on("newAnswer", (offerObj, ackFunction) => {
-
-        const socketToAnswer = connectedSockets.find(s => s.userName == offerObj.offererUserName)
-
-        if (!socketToAnswer) {
-            console.log("No offerer user found in connected sockets array")
-            return
-        }
-
-        const offerToUpdate = offers.find((o) => o.offererUserName == offerObj.offererUserName)
-
-        if (!offerToUpdate) {
-            console.log("No offer found to be updated!")
-            return
-        }
-        ackFunction(offerToUpdate.offerIceCandidates)
-
-        offerToUpdate.answer = offerObj.answer
-        offerToUpdate.answererUserName = userName
-
-        //console.log(`new answer containg offer : ${JSON.stringify(offerToUpdate)}`)
-        console.log(socketToAnswer.userName)
-        socket.to(socketToAnswer.socketId).emit("answerResponse", offerToUpdate)
-    })
-
-    socket.on("sendIceCandidateToSignalingServer", (data) => {
-
-        const { didIOffer, iceUserName, iceCandidate } = data;
-        //  console.log(offers)
-        //  console.log(didIOffer, iceUserName, iceCandidate)
-
-
-        if (didIOffer) {
-            const offer = offers.find((o) => o.offererUserName == iceUserName)
-            // console.log(offer)
-
-            if (!offer) {
-                console.log("No offer found")
-                return;
+        socket.on("newOffer", async (newOffer) => {
+            console.log("recieved new offer")
+            const offerObj = {
+                offererUserName: userName,
+                offer: newOffer,
+                offerIceCandidates: [],
+                answererUserName: null,
+                answer: null,
+                answererIceCandidates: [],
             }
 
-            offer.offerIceCandidates.push(iceCandidate)
-            console.log("offerer ice candidate added ")
+            offers.push(offerObj)
+            //roomCode, package, type
+            await addOfferAndAnswer(roomCode, newOffer, "offerer")
+            socket.broadcast.emit("newOfferAwaiting", [offerObj])
+        })
 
-            if (offer.answererUserName) {
-                const answererSocket = connectedSockets.find(s => s.userName == offer.answererUserName)
-                if (answererSocket) {
-                    socket.to(answererSocket.socketId).emit("receivedIceCandidateFromServer", iceCandidate)
+
+        // -------------------------
+        // JOIN ROOM FOR RECEIVER
+        // -------------------------
+
+        socket.on("joinRoom", async (d) => {
+            console.log("Receiving Joinee data")
+            console.log(d)
+            const offerData = (await joinRoom(d.roomCode, socketDetails,"answerer")).offer
+            socket.emit("OfferData", offerData)
+
+        })
+
+        // -------------------------
+        // NEW ANSWER
+        // -------------------------
+
+        socket.on("newAnswer", async (offerObj, ackFunction) => {
+
+
+            const roomDetails = await roomCheck(offerObj.roomCode)
+            console.log(" getting newAnswer")
+            console.log(offerObj)
+            console.log(roomDetails)
+
+            if (roomDetails) {
+                const socketToAnswer = roomDetails.connectedSockets.find(s => s.userName == offerObj.offererUserName)
+
+                if (!socketToAnswer) {
+                    console.log("No offerer user found in connected sockets array")
+                    return
                 }
-            } else {
-                console.log("No Answerer socket found in the connected socket array")
-                return
-            }
+                const offerToUpdate = roomDetails.offer
 
-
-        } else {
-            const offer = offers.find((o) => o.answererUserName == iceUserName)
-
-            if (!offer) {
-                console.log("No offer found")
-                return;
-            }
-
-            offer.answererIceCandidates.push(iceCandidate)
-
-            if (offer.offererUserName) {
-
-                const offererSocket = connectedSockets.find(s => s.userName == offer.offererUserName)
-
-                if (offererSocket) {
-                    socket.to(offererSocket.socketId).emit("receivedIceCandidateFromServer", iceCandidate)
+                if (!offerToUpdate) {
+                    console.log("No offer found to be updated!")
+                    return
                 }
-            } else {
-                console.log("No offerer socket found in the connected socket array")
-                return
+                ackFunction(offerToUpdate.offerIceCandidates)
+
+                offerToUpdate.answer = offerObj.answer
+                offerToUpdate.answererUserName = offerObj.answererUserName
+
+                roomDetails.offer = offerToUpdate
+               await roomDetails.save()
+
+                //console.log(`new answer containg offer : ${JSON.stringify(offerToUpdate)}`)
+                console.log(socketToAnswer.userName)
+                socket.to(socketToAnswer.socketId).emit("answerResponse", offerToUpdate)
             }
 
 
 
-        }
+        })
+
+        socket.on("sendIceCandidateToSignalingServer", async (data) => {
+
+            const { didIOffer, iceUserName, iceCandidate,roomCode} = data;
+            //  console.log(offers)
+            //  console.log(didIOffer, iceUserName, iceCandidate)
+
+                const offer = await roomCheck(roomCode)
+            if (didIOffer) {
+                
+                // console.log(offer)
+
+                if (!offer) {
+                    console.log("No offer found")
+                    return;
+                }
+
+               // offer.offer.offerIceCandidates.push(iceCandidate)
+                //roomCode, package, type
+                await addIceCandidates(roomCode, iceCandidate, "offerer")
+                console.log("offerer ice candidate added ")
+
+
+
+
+                if (offer.answererUserName) {
+                    const answererSocket = offer.connectedSockets.find(s => s.userName == offer.answererUserName)
+                    if (answererSocket) {
+                        socket.to(answererSocket.socketId).emit("receivedIceCandidateFromServer", iceCandidate)
+                    }
+                } else {
+                    console.log("No Answerer socket found in the connected socket array")
+                    return
+                }
+
+
+            } else {
+                // const offer = offers.find((o) => o.answererUserName == iceUserName)
+
+                if (!offer) {
+                    console.log("No offer found")
+                    return;
+                }
+
+                //offer.answererIceCandidates.push(iceCandidate)
+                await addIceCandidates(roomCode, iceCandidate, "answerer")
+
+                if (offer.offer.offererUserName) {
+
+                    const offererSocket = offer.connectedSockets.find(s => s.userName == offer.offer.offererUserName)
+                    console.log(`offerer Socket : ${offererSocket}`)
+                    if (offererSocket) {
+                        socket.to(offererSocket.socketId).emit("receivedIceCandidateFromServer", iceCandidate)
+                    }
+                } else {
+                    console.log("No offerer socket found in the connected socket array")
+                    return
+                }
+
+
+
+            }
+        })
     })
-})
 
 }
 
-export {setupRTC}
+export { setupRTC }

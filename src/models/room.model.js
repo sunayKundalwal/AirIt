@@ -13,12 +13,13 @@ const roomSchema = new Schema({
         type: String,
         unique: true,
         index: true,
-        required: true
+        required: true,
+        uppercase: true
     },
     connectedSockets: [{
 
         userName: {
-            type: "String"
+            type: String
         },
         socketId: {
             type: String
@@ -28,11 +29,11 @@ const roomSchema = new Schema({
     offer: {
 
         offererUserName: String,
-        offer: String,
-        offerIceCandidates: [{ type : String}],
+        offer: Schema.Types.Mixed,
+        offerIceCandidates: [Schema.Types.Mixed],
         answererUserName: String,
-        answer: String,
-        answererIceCandidates: []
+        answer: Schema.Types.Mixed,
+        answererIceCandidates: [Schema.Types.Mixed]
 
     }
 

@@ -1,4 +1,4 @@
-import { renderFileList, sendFile, dirHandler } from "./script.js";
+//import { renderFileList, sendFile, dirHandler } from "./script.js";
 import { userName } from "./socket.js";
 import { dataChannel } from "./webRTCConnection.js";
 

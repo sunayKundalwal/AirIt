@@ -1,0 +1,2823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DropIt — Instant P2P File Transfer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            orange: {
+              50:'#FFF4EC', 100:'#FFE4CC', 200:'#FFC899', 300:'#FFAC66',
+              400:'#FF9033', 500:'#FF7A1A', 600:'#E86200', 700:'#C05000',
+            },
+          },
+          fontFamily: {
+            sans: ['Inter','system-ui','sans-serif'],
+            mono: ['JetBrains Mono','monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin:0; padding:0; font-family:'Inter',system-ui,sans-serif; background:#F5F2EF; min-height:100vh; overflow-x:hidden; }
+
+    .bg-mesh {
+      position:fixed; inset:0; z-index:0; pointer-events:none;
+      background:
+        radial-gradient(ellipse 900px 600px at 15% 20%, rgba(255,122,26,.10) 0%, transparent 70%),
+        radial-gradient(ellipse 700px 700px at 85% 80%, rgba(255,122,26,.07) 0%, transparent 65%),
+        #F5F2EF;
+    }
+
+    .glass {
+      background:rgba(255,255,255,0.72);
+      backdrop-filter:blur(24px) saturate(1.4);
+      -webkit-backdrop-filter:blur(24px) saturate(1.4);
+      border:1px solid rgba(255,255,255,0.85);
+      box-shadow:0 4px 6px -1px rgba(0,0,0,.04),0 20px 50px -10px rgba(0,0,0,.10),inset 0 1px 0 rgba(255,255,255,.9);
+    }
+    .glass-light {
+      background:rgba(255,255,255,0.55);
+      backdrop-filter:blur(16px);
+      -webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(255,255,255,0.75);
+      box-shadow:0 2px 12px rgba(0,0,0,.06);
+    }
+
+    /* Screens */
+    .screen { display:none; position:relative; z-index:1; min-height:100vh; padding:24px 16px; align-items:center; justify-content:center; }
+    .screen.active { display:flex; }
+
+    @keyframes fadeIn  { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes scaleIn { from{opacity:0;transform:scale(.92)}       to{opacity:1;transform:scale(1)} }
+    .anim-fade  { animation:fadeIn  .35s cubic-bezier(.22,.68,0,1.2) both; }
+    .anim-slide { animation:slideUp .4s  cubic-bezier(.22,.68,0,1.2) both; }
+    .anim-scale { animation:scaleIn .3s  cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* Device animation */
+    @keyframes floatUp   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+    @keyframes pulseGlow { 0%,100%{opacity:.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
+    @keyframes connectLine { 0%{stroke-dashoffset:200;opacity:.3} 50%{stroke-dashoffset:100;opacity:1} 100%{stroke-dashoffset:0;opacity:.3} }
+    .device-float { animation:floatUp 3s ease-in-out infinite; }
+    .glow-pulse   { animation:pulseGlow 2.5s ease-in-out infinite; }
+    .connect-line { animation:connectLine 2s ease-in-out infinite; }
+    .connect-line:nth-child(2){animation-delay:.5s}
+    .connect-line:nth-child(3){animation-delay:1s}
+
+    /* QR countdown ring */
+    .qr-countdown-ring { transform:rotate(-90deg); transition:stroke-dashoffset 1s linear; }
+    @keyframes qrRefresh { 0%{opacity:1} 50%{opacity:.4} 100%{opacity:1} }
+    .qr-refreshing { animation:qrRefresh .6s ease-in-out; }
+
+    /* Step indicator */
+    .step-dot { width:8px; height:8px; border-radius:50%; background:#D5CFC8; transition:all .3s cubic-bezier(.22,.68,0,1.2); }
+    .step-dot.active { background:#FF7A1A; width:24px; border-radius:4px; }
+    .step-dot.done { background:#22C55E; }
+    .step-line { height:1px; flex:1; background:#E5DDD5; transition:background .4s; }
+    .step-line.done { background:#22C55E; }
+
+    /* Progress ring */
+    .progress-ring { transform:rotate(-90deg); }
+    .progress-ring-circle { transition:stroke-dashoffset .5s cubic-bezier(.4,0,.2,1); stroke-linecap:round; }
+
+    /* Progress bars */
+    .pbar { height:6px; border-radius:99px; background:#EDE8E3; overflow:hidden; }
+    .pbar-fill { height:100%; border-radius:99px; background:linear-gradient(90deg,#FF7A1A,#FF9A4A); transition:width .3s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden; }
+    .pbar-fill.done  { background:linear-gradient(90deg,#22C55E,#4ADE80); }
+    .pbar-fill.vfy   { background:linear-gradient(90deg,#A855F7,#C084FC); }
+    .pbar-fill.paused { background:linear-gradient(90deg,#F59E0B,#FBB454); }
+    @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(200%)} }
+    .pbar-fill.vfy::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); animation:shimmer 1.2s ease-in-out infinite; }
+    @keyframes pbarPulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+    .pbar-fill.paused::after { content:''; position:absolute; inset:0; animation:pbarPulse 1.5s ease-in-out infinite; }
+
+    /* Badge */
+    @keyframes badgePulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+    .badge-anim { animation:badgePulse 2s ease-in-out infinite; }
+
+    /* Checkmark */
+    @keyframes checkDraw { from{stroke-dashoffset:50;opacity:0} to{stroke-dashoffset:0;opacity:1} }
+    .check-path { stroke-dasharray:50; stroke-dashoffset:50; animation:checkDraw .5s .3s cubic-bezier(.22,.68,0,1.2) forwards; }
+
+    /* Success */
+    @keyframes successExpand { 0%{transform:scale(0);opacity:.6} 100%{transform:scale(2.5);opacity:0} }
+    @keyframes floatParticle { 0%{opacity:0;transform:translateY(0) scale(0)} 20%{opacity:1} 100%{opacity:0;transform:translateY(-80px) scale(1)} }
+    .success-ring     { position:absolute; inset:0; border-radius:50%; border:2px solid rgba(34,197,94,.4); animation:successExpand 1.6s ease-out infinite; }
+    .success-particle { position:absolute; width:6px; height:6px; border-radius:50%; animation:floatParticle var(--dur,2s) var(--delay,0s) ease-out infinite; }
+
+    /* Connected badge pulse */
+    @keyframes connectedPulse { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4)} 70%{box-shadow:0 0 0 12px rgba(34,197,94,0)} }
+    .connected-badge { animation:connectedPulse 2s ease-out 3; }
+
+    /* Hover lift */
+    .hover-lift { transition:transform .18s ease,box-shadow .18s ease; }
+    .hover-lift:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.10); }
+
+    /* File row */
+    .file-row { transition:background .15s; }
+    .file-row:hover { background:rgba(255,255,255,.85); }
+
+    /* Approval summary card hover */
+    .approval-file-row { transition:all .15s; border-radius:12px; }
+    .approval-file-row:hover { background:rgba(255,255,255,.7); transform:translateX(2px); }
+
+    /* Toast */
+    @keyframes toastIn  { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes toastOut { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(20px)} }
+    .toast     { animation:toastIn  .25s ease; }
+    .toast.out { animation:toastOut .25s ease forwards; }
+
+    /* Modal */
+    .modal-overlay { display:none; }
+    .modal-overlay.open { display:flex; }
+    @keyframes modalIn { from{opacity:0;transform:scale(.94) translateY(12px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    .modal-card { animation:modalIn .25s cubic-bezier(.22,.68,0,1.2); }
+
+    /* Code input */
+    .code-input {
+      font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600;
+      letter-spacing:4px; text-align:center;
+      background:rgba(245,242,239,0.7); border:1.5px solid #E5DDD5; border-radius:12px;
+      padding:12px 10px; outline:none; transition:border-color .2s,box-shadow .2s; width:110px;
+    }
+    .code-input:focus { border-color:#FF7A1A; box-shadow:0 0 0 3px rgba(255,122,26,.12); }
+    .code-input.error { border-color:#EF4444; box-shadow:0 0 0 3px rgba(239,68,68,.12); }
+
+    /* Buttons */
+    .btn-primary {
+      background:#FF7A1A; color:white; font-weight:600; font-size:15px;
+      border:none; cursor:pointer; border-radius:14px; padding:14px 28px;
+      transition:background .18s,transform .12s,box-shadow .18s;
+      box-shadow:0 4px 16px rgba(255,122,26,.28);
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn-primary:hover  { background:#E86200; box-shadow:0 6px 20px rgba(255,122,26,.36); }
+    .btn-primary:active { transform:scale(.97); }
+    .btn-primary:disabled { background:#D1CCC8; box-shadow:none; cursor:not-allowed; color:#9CA3AF; }
+
+    .btn-ghost {
+      background:transparent; border:1.5px solid #D5CFC8; color:#6B6560;
+      font-weight:500; font-size:15px; border-radius:14px; padding:14px 28px;
+      cursor:pointer; transition:background .18s,border-color .18s,transform .12s;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn-ghost:hover  { background:rgba(0,0,0,.04); border-color:#B0A9A1; }
+    .btn-ghost:active { transform:scale(.97); }
+    .btn-ghost.danger { color:#DC2626; border-color:#FECACA; }
+    .btn-ghost.danger:hover { background:rgba(239,68,68,.06); border-color:#EF4444; }
+    .btn-sm { padding:8px 16px; font-size:13px; border-radius:10px; }
+    .btn-icon { padding:10px; border-radius:10px; }
+
+    /* Tooltip */
+    .tooltip-wrap { position:relative; display:inline-block; }
+    .tooltip-tip {
+      position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+      background:#1A1714; color:white; font-size:12px; font-weight:500;
+      padding:6px 12px; border-radius:8px; white-space:nowrap; pointer-events:none;
+      opacity:0; transition:opacity .2s;
+    }
+    .tooltip-tip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#1A1714; }
+    .tooltip-wrap:hover .tooltip-tip { opacity:1; }
+
+    /* Speed graph sparkline */
+    .sparkline { display:block; }
+
+    /* Keyboard hint badge */
+    .kbd { display:inline-flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.12); border-radius:5px;
+      font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:600;
+      padding:1px 5px; color:#6B6560; line-height:1.4; }
+
+    /* Transfer paused overlay */
+    .paused-banner {
+      background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.3);
+      border-radius:12px; padding:10px 14px;
+      display:flex; align-items:center; gap:8px;
+      transition:all .3s; overflow:hidden; max-height:0; opacity:0;
+    }
+    .paused-banner.visible { max-height:60px; opacity:1; }
+
+    /* Decline confirm overlay */
+    .decline-confirm { display:none; }
+    .decline-confirm.open { display:flex; }
+
+    @media(max-width:768px) {
+      .hero-grid { grid-template-columns:1fr !important; }
+      .stats-grid { grid-template-columns:1fr 1fr !important; }
+    }
+
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-thumb { background:#D5CFC8; border-radius:99px; }
+
+    /* Reduced motion */
+    @media(prefers-reduced-motion:reduce) {
+      .device-float, .glow-pulse, .connect-line, .badge-anim, .connected-badge, .success-ring, .success-particle { animation:none !important; }
+      .anim-fade, .anim-slide, .anim-scale { animation:none !important; }
+    }
+
+    /* ── Send flow ─────────────────────────────────────────────── */
+    .mode-tab {
+      flex:1; padding:10px 16px; border-radius:10px; border:none; cursor:pointer;
+      font-size:14px; font-weight:500; color:#6B6560; background:transparent;
+      transition:all .2s cubic-bezier(.22,.68,0,1.2);
+      display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    }
+    .mode-tab.active { background:white; color:#1A1714; font-weight:600;
+      box-shadow:0 2px 8px rgba(0,0,0,.10); }
+
+    /* Drop zone */
+    .drop-zone {
+      border:2px dashed #E5DDD5; border-radius:20px; padding:40px 24px;
+      text-align:center; transition:all .2s; cursor:pointer;
+      background:rgba(255,255,255,.4);
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color:#FF7A1A; background:rgba(255,122,26,.04);
+    }
+    .drop-zone.drag-over { transform:scale(1.01); }
+    .drop-zone.has-files { border-style:solid; border-color:rgba(255,122,26,.3); padding:16px 20px; }
+
+    /* File chip */
+    .file-chip {
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      background:rgba(255,255,255,.7); border:1px solid rgba(255,255,255,.9);
+      border-radius:12px; transition:all .15s;
+    }
+    .file-chip:hover { background:rgba(255,255,255,.95); }
+    @keyframes chipIn { from{opacity:0;transform:translateX(-8px) scale(.97)} to{opacity:1;transform:none} }
+    .chip-anim { animation:chipIn .2s cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* Add more files banner */
+    .add-more-banner {
+      max-height:0; overflow:hidden; opacity:0;
+      transition:max-height .4s cubic-bezier(.4,0,.2,1), opacity .3s;
+    }
+    .add-more-banner.visible { max-height:120px; opacity:1; }
+    @keyframes bannerPulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,122,26,.3)} 70%{box-shadow:0 0 0 8px rgba(255,122,26,0)} }
+    .add-more-pulse { animation:bannerPulse 2s ease-out 3; }
+
+
+    /* ══════════════════════════════════════════════════════════
+       NEW ADDITIONS CSS
+    ══════════════════════════════════════════════════════════ */
+
+    /* ── Signal strength bars ── */
+    .signal-bar {
+      width:4px; border-radius:99px;
+      background:#D5CFC8; transition:background .4s, height .3s;
+    }
+    .signal-bar.active { background:#22C55E; }
+    .signal-bar.warn   { background:#F59E0B; }
+    .signal-bar.poor   { background:#EF4444; }
+
+    /* ── Keyboard shortcuts modal ── */
+    .kbd-row { display:flex; align-items:center; justify-content:space-between;
+      padding:8px 0; border-bottom:1px solid rgba(0,0,0,.04); }
+    .kbd-row:last-child { border-bottom:none; }
+    .kbd-combo { display:flex; align-items:center; gap:4px; }
+
+    /* ── History panel (slide-in drawer) ── */
+    .history-drawer {
+      position:fixed; top:0; right:-420px; bottom:0; width:400px; z-index:35;
+      transition:right .35s cubic-bezier(.22,.68,0,1.2);
+      overflow-y:auto;
+    }
+    .history-drawer.open { right:0; }
+    .history-backdrop {
+      position:fixed; inset:0; z-index:34; background:rgba(0,0,0,.12);
+      backdrop-filter:blur(2px); display:none;
+    }
+    .history-backdrop.open { display:block; }
+
+    /* ── Diagnostics panel ── */
+    .diag-panel {
+      max-height:0; overflow:hidden; opacity:0;
+      transition:max-height .4s cubic-bezier(.4,0,.2,1), opacity .25s;
+    }
+    .diag-panel.open { max-height:360px; opacity:1; }
+
+    /* ── File deselect (receive queue) ── */
+    .file-deselect-row { transition:all .2s; }
+    .file-deselect-row.deselected { opacity:.45; }
+    .file-deselect-row.deselected .pbar-fill { background:#D5CFC8; }
+    @keyframes rowDeselect { from{background:rgba(239,68,68,.06)} to{background:transparent} }
+    .file-deselect-row.deselected { animation:rowDeselect .4s ease; }
+
+    /* ── Draggable chip ── */
+    .file-chip.dragging { opacity:.5; transform:scale(.97); box-shadow:0 8px 24px rgba(0,0,0,.14); }
+    .file-chip.drag-over-chip { border-top:2px solid #FF7A1A; }
+
+    /* ── Preview tooltip ── */
+    .file-preview-wrap { position:relative; }
+    .file-preview-card {
+      position:absolute; bottom:calc(100% + 10px); left:50%; transform:translateX(-50%) scale(.9);
+      width:180px; z-index:20; pointer-events:none;
+      opacity:0; transition:opacity .2s, transform .2s cubic-bezier(.22,.68,0,1.2);
+    }
+    .file-preview-wrap:hover .file-preview-card { opacity:1; transform:translateX(-50%) scale(1); }
+    .file-preview-card::after {
+      content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+      border:6px solid transparent; border-top-color:rgba(255,255,255,.92);
+    }
+
+    /* ── Settings modal tabs ── */
+    .settings-tab { padding:8px 14px; border-radius:10px; font-size:13px; font-weight:500;
+      color:#6B6560; cursor:pointer; transition:all .18s; border:none; background:transparent; }
+    .settings-tab.active { background:white; color:#1A1714; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+
+    /* ── Net quality shimmer on poor conn ── */
+    @keyframes qualityWarn { 0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.3)} 50%{box-shadow:0 0 0 6px rgba(245,158,11,0)} }
+    .quality-warn { animation:qualityWarn 2s ease infinite; }
+
+    /* ── Receive deselect count badge ── */
+    .deselect-count {
+      display:inline-flex; align-items:center; justify-content:center;
+      background:#FF7A1A; color:white; font-size:10px; font-weight:700;
+      width:16px; height:16px; border-radius:50%; margin-left:4px;
+    }
+
+    /* ── History entry ── */
+    .history-entry { transition:background .15s; border-radius:12px; }
+    .history-entry:hover { background:rgba(255,255,255,.8); }
+    @keyframes entryIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+    .entry-anim { animation:entryIn .25s cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* ── Toggle switch ── */
+    .toggle-switch {
+      position:relative; display:inline-block; width:40px; height:22px; cursor:pointer;
+    }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-track {
+      position:absolute; inset:0; border-radius:99px; background:#D5CFC8;
+      transition:background .2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background:#FF7A1A; }
+    .toggle-thumb {
+      position:absolute; width:16px; height:16px; border-radius:50%; background:white;
+      top:3px; left:3px; transition:transform .2s cubic-bezier(.22,.68,0,1.2);
+      box-shadow:0 1px 3px rgba(0,0,0,.2);
+    }
+    .toggle-switch input:checked ~ .toggle-thumb { transform:translateX(18px); }
+  </style>
+</head>
+<body>
+
+<div class="bg-mesh"></div>
+<div id="toastContainer" class="fixed top-6 right-6 z-50 flex flex-col gap-3"></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- GLOBAL NAV                                                -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<nav id="globalNav" class="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-6 py-4" style="pointer-events:none">
+  <div class="flex items-center gap-2 pointer-events-auto">
+    <div class="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center shadow-sm">
+      <i data-lucide="wifi" class="w-3.5 h-3.5 text-white"></i>
+    </div>
+    <span style="font-weight:700;font-size:16px" class="text-gray-800 tracking-tight">DropIt</span>
+  </div>
+
+  <!-- Step indicator (shown during receive flow) -->
+  <div id="stepIndicator" class="hidden items-center gap-2 pointer-events-auto glass-light px-4 py-2 rounded-full">
+    <div id="step1dot" class="step-dot active"></div>
+    <div id="step1line" class="step-line" style="width:20px"></div>
+    <div id="step2dot" class="step-dot"></div>
+    <div id="step2line" class="step-line" style="width:20px"></div>
+    <div id="step3dot" class="step-dot"></div>
+    <div id="step3line" class="step-line" style="width:20px"></div>
+    <div id="step4dot" class="step-dot"></div>
+  </div>
+
+  <!-- Right nav cluster -->
+  <div class="flex items-center gap-2 pointer-events-auto">
+    <!-- Signal strength indicator (shown during active transfer) -->
+    <div id="signalIndicator" class="hidden items-center gap-1 glass-light px-2.5 py-1.5 rounded-full">
+      <div id="sigBar1" class="signal-bar" style="height:6px"></div>
+      <div id="sigBar2" class="signal-bar" style="height:9px"></div>
+      <div id="sigBar3" class="signal-bar" style="height:12px"></div>
+      <div id="sigBar4" class="signal-bar" style="height:15px"></div>
+      <span id="sigLabel" class="text-xs text-gray-500 ml-1" style="font-weight:500">P2P</span>
+    </div>
+
+    <!-- Connection badge (shown after connect) -->
+    <div id="navConnectionBadge" class="hidden items-center gap-2">
+      <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-light">
+        <div class="w-2 h-2 rounded-full bg-green-400" style="box-shadow:0 0 0 0 rgba(34,197,94,.4);animation:connectedPulse 2s ease-out infinite"></div>
+        <span class="text-xs text-green-700" style="font-weight:500">iPhone 15</span>
+      </div>
+    </div>
+
+    <!-- Nav actions: History + Settings -->
+    <button onclick="openSettings()" class="w-8 h-8 rounded-lg glass-light flex items-center justify-center hover:bg-white/80 transition-colors" title="Settings" aria-label="Settings">
+      <i data-lucide="settings" class="w-3.5 h-3.5 text-gray-400"></i>
+    </button>
+    <button onclick="openHistory()" class="w-8 h-8 rounded-lg glass-light flex items-center justify-center hover:bg-white/80 transition-colors" title="Transfer history" aria-label="Transfer history">
+      <i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>
+    </button>
+    <button onclick="openKeyboardHelp()" class="w-8 h-8 rounded-lg glass-light flex items-center justify-center hover:bg-white/80 transition-colors" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+      <i data-lucide="keyboard" class="w-3.5 h-3.5 text-gray-400"></i>
+    </button>
+  </div>
+</nav>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- MODAL — Enter connection code                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="codeModal" class="modal-overlay fixed inset-0 z-40 bg-black/20 backdrop-blur-sm items-center justify-center p-4">
+  <div class="modal-card glass rounded-3xl p-8 max-w-sm w-full">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h3 class="text-lg text-gray-800" style="font-weight:700">Enter Connection Code</h3>
+        <p class="text-sm text-gray-500 mt-1">Type the code shown on the other device.</p>
+      </div>
+      <button onclick="closeModal()" class="w-9 h-9 rounded-full hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Close modal">
+        <i data-lucide="x" class="w-4 h-4 text-gray-500"></i>
+      </button>
+    </div>
+    <div class="flex items-center gap-2 justify-center mb-6">
+      <input id="codeA" class="code-input" placeholder="A8K4" maxlength="4" autocomplete="off" spellcheck="false"
+        oninput="handleCodeInput(this,'codeB')" onkeydown="handleCodeKey(event,this,null,'codeB')" aria-label="First half of connection code" />
+      <span class="text-xl text-gray-400" aria-hidden="true">—</span>
+      <input id="codeB" class="code-input" placeholder="92MP" maxlength="4" autocomplete="off" spellcheck="false"
+        oninput="handleCodeInput(this,null)" onkeydown="handleCodeKey(event,this,'codeA',null)" aria-label="Second half of connection code" />
+    </div>
+    <div id="modalError" class="hidden mb-4 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-100" role="alert">
+      <i data-lucide="alert-circle" class="w-4 h-4 text-red-500 shrink-0"></i>
+      <span class="text-sm text-red-600" id="modalErrorText">Invalid code. Please check and try again.</span>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="closeModal()" class="btn-ghost flex-1">Cancel</button>
+      <button id="modalConnectBtn" onclick="connectViaCode()" class="btn-primary flex-1">
+        <i data-lucide="key-round" class="w-4 h-4"></i>Connect
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- DECLINE CONFIRM MODAL                                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="declineModal" class="decline-confirm fixed inset-0 z-40 bg-black/20 backdrop-blur-sm items-center justify-center p-4">
+  <div class="modal-card glass rounded-3xl p-8 max-w-sm w-full">
+    <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
+      <i data-lucide="alert-circle" class="w-6 h-6 text-red-500"></i>
+    </div>
+    <h3 class="text-lg text-gray-800 mb-2" style="font-weight:700">Decline this transfer?</h3>
+    <p class="text-sm text-gray-500 mb-6 leading-relaxed">The connection will be closed and no files will be received. Your phone will be notified.</p>
+    <div class="flex gap-3">
+      <button onclick="closeDeclineModal()" class="btn-ghost flex-1">Go Back</button>
+      <button onclick="confirmDecline()" class="btn-primary flex-1" style="background:#DC2626;box-shadow:0 4px 16px rgba(220,38,38,.25)">
+        <i data-lucide="x" class="w-4 h-4"></i>Yes, Decline
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- NEW: KEYBOARD SHORTCUTS MODAL                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="kbdModal" class="modal-overlay fixed inset-0 z-40 bg-black/20 backdrop-blur-sm items-center justify-center p-4">
+  <div class="modal-card glass rounded-3xl p-8 max-w-sm w-full">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h3 class="text-lg text-gray-800" style="font-weight:700">Keyboard Shortcuts</h3>
+        <p class="text-sm text-gray-500 mt-1">Fly through DropIt without touching the mouse.</p>
+      </div>
+      <button onclick="closeKeyboardHelp()" class="w-9 h-9 rounded-full hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Close">
+        <i data-lucide="x" class="w-4 h-4 text-gray-500"></i>
+      </button>
+    </div>
+    <div class="space-y-0">
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Open connection code modal</span>
+        <div class="kbd-combo"><span class="kbd">⌘</span><span class="kbd">K</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Pause / Resume transfer</span>
+        <div class="kbd-combo"><span class="kbd">Space</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Accept transfer (approval screen)</span>
+        <div class="kbd-combo"><span class="kbd">↵</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Cancel active transfer</span>
+        <div class="kbd-combo"><span class="kbd">Esc</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Copy connection code</span>
+        <div class="kbd-combo"><span class="kbd">⌘</span><span class="kbd">C</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Open transfer history</span>
+        <div class="kbd-combo"><span class="kbd">⌘</span><span class="kbd">H</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">Open settings</span>
+        <div class="kbd-combo"><span class="kbd">⌘</span><span class="kbd">,</span></div>
+      </div>
+      <div class="kbd-row">
+        <span class="text-sm text-gray-600">This help panel</span>
+        <div class="kbd-combo"><span class="kbd">?</span></div>
+      </div>
+    </div>
+    <button onclick="closeKeyboardHelp()" class="btn-primary w-full mt-6">Got it</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- NEW: SETTINGS MODAL                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="settingsModal" class="modal-overlay fixed inset-0 z-40 bg-black/20 backdrop-blur-sm items-center justify-center p-4">
+  <div class="modal-card glass rounded-3xl p-0 max-w-md w-full overflow-hidden">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-7 py-5 border-b border-gray-100/60">
+      <h3 class="text-lg text-gray-800" style="font-weight:700">Settings</h3>
+      <button onclick="closeSettings()" class="w-9 h-9 rounded-full hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Close settings">
+        <i data-lucide="x" class="w-4 h-4 text-gray-500"></i>
+      </button>
+    </div>
+    <!-- Tabs -->
+    <div class="flex gap-1 px-7 py-3 border-b border-gray-100/60" style="background:rgba(245,242,239,.5)">
+      <button class="settings-tab active" onclick="switchSettingsTab('general',this)">General</button>
+      <button class="settings-tab" onclick="switchSettingsTab('transfer',this)">Transfer</button>
+      <button class="settings-tab" onclick="switchSettingsTab('privacy',this)">Privacy</button>
+    </div>
+    <!-- Tab content -->
+    <div id="settingsGeneral" class="px-7 py-6 space-y-5">
+      <!-- Default save folder -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Default save folder</p>
+          <p class="text-xs text-gray-400 mt-0.5">Where received files go automatically</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-500 font-mono" style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Downloads/DropIt</span>
+          <button onclick="showToast('Folder picker opened','folder-open','orange')" class="btn-ghost btn-sm" style="padding:5px 10px;font-size:12px">Change</button>
+        </div>
+      </div>
+      <!-- Notification sound -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Transfer sound effects</p>
+          <p class="text-xs text-gray-400 mt-0.5">Play a sound when transfer completes</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="soundToggle" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <!-- Auto-open folder -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Open folder on complete</p>
+          <p class="text-xs text-gray-400 mt-0.5">Automatically reveal files after transfer</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="autoOpenToggle">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div id="settingsTransfer" class="hidden px-7 py-6 space-y-5">
+      <!-- Bandwidth limit -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm text-gray-800" style="font-weight:600">Bandwidth limit</p>
+          <span id="bwLabel" class="text-xs text-orange-500" style="font-weight:600">Unlimited</span>
+        </div>
+        <input type="range" id="bwSlider" min="0" max="5" value="0" step="1"
+          oninput="updateBwLabel(this)"
+          class="w-full" style="accent-color:#FF7A1A">
+        <div class="flex justify-between text-xs text-gray-400 mt-1">
+          <span>Unlimited</span><span>10 MB/s</span><span>25 MB/s</span><span>50 MB/s</span><span>100 MB/s</span><span>200 MB/s</span>
+        </div>
+      </div>
+      <!-- Chunk size -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Large-file optimization</p>
+          <p class="text-xs text-gray-400 mt-0.5">Use bigger transfer chunks for files over 100 MB</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="chunkToggle" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <!-- Pause on battery -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Pause on low battery</p>
+          <p class="text-xs text-gray-400 mt-0.5">Pause automatically if phone battery drops below 15%</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="batteryToggle" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+    <div id="settingsPrivacy" class="hidden px-7 py-6 space-y-5">
+      <!-- Auto-reject unknown -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Require approval for every transfer</p>
+          <p class="text-xs text-gray-400 mt-0.5">Always prompt before accepting files — recommended</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="approvalToggle" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <!-- Log history -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Save transfer history</p>
+          <p class="text-xs text-gray-400 mt-0.5">Keep a local log of past sessions (stored only on this device)</p>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="historyToggle" checked>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <!-- Clear history -->
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-800" style="font-weight:600">Clear transfer history</p>
+          <p class="text-xs text-gray-400 mt-0.5">Remove all locally stored session logs</p>
+        </div>
+        <button onclick="clearHistory()" class="btn-ghost btn-sm danger" style="padding:6px 12px;font-size:12px">Clear</button>
+      </div>
+    </div>
+    <!-- Footer -->
+    <div class="px-7 py-4 border-t border-gray-100/60 flex justify-end gap-3" style="background:rgba(245,242,239,.3)">
+      <button onclick="closeSettings()" class="btn-ghost btn-sm">Cancel</button>
+      <button onclick="saveSettings()" class="btn-primary btn-sm">
+        <i data-lucide="check" class="w-3.5 h-3.5"></i>Save changes
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- NEW: HISTORY DRAWER                                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="historyBackdrop" class="history-backdrop" onclick="closeHistory()"></div>
+<div id="historyDrawer" class="history-drawer glass" style="padding:0;box-shadow:-8px 0 40px rgba(0,0,0,.12)">
+  <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100/60">
+    <div>
+      <h3 class="text-base text-gray-800" style="font-weight:700">Transfer History</h3>
+      <p class="text-xs text-gray-400 mt-0.5">Stored only on this device</p>
+    </div>
+    <button onclick="closeHistory()" class="w-9 h-9 rounded-full hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Close history">
+      <i data-lucide="x" class="w-4 h-4 text-gray-500"></i>
+    </button>
+  </div>
+  <div class="px-4 py-4" id="historyList">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 1 — Landing / QR                                   -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen1" class="screen active" style="padding-top:72px">
+  <div class="w-full max-w-5xl mx-auto">
+    <!-- Mode toggle -->
+    <div class="flex items-center justify-between mb-6 anim-fade">
+      <div class="glass-light rounded-2xl p-1.5 flex gap-1" style="width:fit-content">
+        <button id="modeReceive" onclick="setMode('receive')" class="mode-tab active">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>Receive Files
+        </button>
+        <button id="modeSend" onclick="setMode('send')" class="mode-tab">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i>Send Files
+        </button>
+      </div>
+      <div class="text-xs text-gray-400 flex items-center gap-1.5 glass-light px-3 py-1.5 rounded-full">
+        <i data-lucide="shield-check" class="w-3 h-3 text-green-500"></i>
+        P2P Encrypted
+      </div>
+    </div>
+
+    <div class="glass rounded-3xl p-8 lg:p-12 hero-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center">
+
+      <!-- Left: illustration -->
+      <div class="anim-fade" style="animation-delay:.1s">
+        <div style="position:relative;width:100%;height:280px">
+          <svg width="100%" height="100%" viewBox="0 0 400 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="200" cy="140" rx="120" ry="90" fill="rgba(255,122,26,0.06)" class="glow-pulse"/>
+            <ellipse cx="200" cy="140" rx="80" ry="60" fill="rgba(255,122,26,0.06)" class="glow-pulse" style="animation-delay:.8s"/>
+            <line x1="130" y1="140" x2="270" y2="140" stroke="rgba(255,122,26,0.3)" stroke-width="1.5" stroke-dasharray="6 4" class="connect-line"/>
+            <line x1="130" y1="130" x2="270" y2="125" stroke="rgba(255,122,26,0.18)" stroke-width="1" stroke-dasharray="4 6" class="connect-line"/>
+            <line x1="130" y1="150" x2="270" y2="155" stroke="rgba(255,122,26,0.18)" stroke-width="1" stroke-dasharray="4 6" class="connect-line"/>
+            <g class="device-float">
+              <rect x="60" y="100" width="120" height="80" rx="10" fill="white" stroke="#E5DDD5" stroke-width="1.5"/>
+              <rect x="64" y="104" width="112" height="70" rx="7" fill="#F0ECE8"/>
+              <rect x="72" y="112" width="60" height="5" rx="2.5" fill="#D5CFC8"/>
+              <rect x="72" y="121" width="40" height="4" rx="2" fill="#E5DDD5"/>
+              <rect x="72" y="129" width="80" height="4" rx="2" fill="#E5DDD5"/>
+              <rect x="72" y="148" width="30" height="12" rx="6" fill="#FF7A1A" opacity=".85"/>
+              <rect x="108" y="180" width="4" height="18" rx="2" fill="#D5CFC8"/>
+              <rect x="93" y="196" width="34" height="5" rx="2.5" fill="#D5CFC8"/>
+            </g>
+            <g class="device-float" style="animation-delay:1.2s">
+              <rect x="268" y="88" width="72" height="120" rx="14" fill="white" stroke="#E5DDD5" stroke-width="1.5"/>
+              <rect x="272" y="92" width="64" height="112" rx="11" fill="#F0ECE8"/>
+              <rect x="278" y="104" width="40" height="5" rx="2.5" fill="#D5CFC8"/>
+              <rect x="278" y="113" width="52" height="4" rx="2" fill="#E5DDD5"/>
+              <circle cx="304" cy="96" r="3" fill="#D5CFC8"/>
+              <rect x="278" y="135" width="16" height="16" rx="4" fill="rgba(255,122,26,.7)"/>
+              <rect x="298" y="135" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="318" y="135" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="278" y="155" width="16" height="16" rx="4" fill="#E5DDD5"/>
+              <rect x="298" y="155" width="16" height="16" rx="4" fill="rgba(255,122,26,.35)"/>
+              <rect x="292" y="192" width="24" height="4" rx="2" fill="#D5CFC8"/>
+            </g>
+            <circle cx="165" cy="110" r="5" fill="#FF9A4A" opacity=".5">
+              <animate attributeName="cy" values="110;100;110" dur="3s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="245" cy="158" r="4" fill="#FF7A1A" opacity=".45">
+              <animate attributeName="cy" values="158;168;158" dur="3.5s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+        <div class="flex items-center gap-2 mt-4 flex-wrap">
+          <div class="flex items-center gap-2 glass-light px-3 py-1.5 rounded-full">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-orange-500"></i>
+            <span class="text-xs text-gray-600" style="font-weight:500">End-to-End Encrypted</span>
+          </div>
+          <div class="flex items-center gap-2 glass-light px-3 py-1.5 rounded-full">
+            <i data-lucide="wifi" class="w-3.5 h-3.5 text-green-500"></i>
+            <span class="text-xs text-gray-600" style="font-weight:500">No account needed</span>
+          </div>
+          <div class="flex items-center gap-2 glass-light px-3 py-1.5 rounded-full">
+            <i data-lucide="zap" class="w-3.5 h-3.5 text-orange-400"></i>
+            <span class="text-xs text-gray-600" style="font-weight:500">Direct transfer</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: QR + code -->
+      <div class="anim-fade" style="animation-delay:.2s">
+        <div class="mb-6">
+          <h1 style="font-weight:800;font-size:clamp(28px,4vw,42px)" class="text-gray-900 leading-tight tracking-tight">
+            Share files<br><span class="text-orange-500">instantly.</span>
+          </h1>
+          <p class="text-base text-gray-500 mt-3 leading-relaxed" style="max-width:360px">
+            Connect your phone and transfer files securely over a direct peer-to-peer connection. No apps, no accounts.
+          </p>
+        </div>
+
+        <!-- QR card with countdown ring -->
+        <div class="glass-light rounded-2xl p-5 inline-flex flex-col items-center gap-3 mb-5" style="position:relative">
+          <div style="position:relative;width:180px;height:180px">
+            <svg width="180" height="180" style="position:absolute;inset:0;z-index:1;pointer-events:none">
+              <circle cx="90" cy="90" r="86" fill="none" stroke="#F0ECE8" stroke-width="3"/>
+              <circle id="qrCountdownCircle" cx="90" cy="90" r="86" fill="none" stroke="#FF7A1A"
+                stroke-width="3" stroke-dasharray="540.35" stroke-dashoffset="0"
+                stroke-linecap="round" class="qr-countdown-ring" style="transform-origin:center;transform:rotate(-90deg)"/>
+            </svg>
+            <canvas id="qrCanvas" width="180" height="180" style="border-radius:12px;display:block;position:relative;z-index:2"></canvas>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none" style="z-index:3">
+              <div class="w-10 h-10 bg-white rounded-lg shadow-sm flex items-center justify-center">
+                <div class="w-6 h-6 rounded-md bg-orange-500 flex items-center justify-center">
+                  <i data-lucide="wifi" class="w-3.5 h-3.5 text-white"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <p class="text-sm text-gray-500 flex items-center gap-1.5">
+              <i data-lucide="smartphone" class="w-3.5 h-3.5 text-gray-400"></i>
+              Scan with your phone to connect
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5 text-xs text-gray-400">
+            <i data-lucide="clock" class="w-3 h-3"></i>
+            <span>Refreshes in <span id="qrCountdownText" class="font-mono font-semibold text-gray-500">3:00</span></span>
+          </div>
+        </div>
+
+        <!-- Connection code row -->
+        <div class="glass-light rounded-xl px-4 py-3 flex items-center justify-between gap-3 mb-5">
+          <div>
+            <p class="text-xs text-gray-400 mb-0.5">Connection Code</p>
+            <span id="connCodeDisplay" class="text-xl text-gray-800" style="font-family:'JetBrains Mono',monospace;font-weight:600;letter-spacing:0.15em">A8K4—92MP</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="copyCode()" class="w-8 h-8 rounded-lg hover:bg-black/05 flex items-center justify-center transition-colors" aria-label="Copy connection code">
+              <i data-lucide="copy" class="w-4 h-4 text-gray-400"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-4">
+          <div class="h-px flex-1 bg-gray-200"></div>
+          <span class="text-sm text-gray-400">or</span>
+          <div class="h-px flex-1 bg-gray-200"></div>
+        </div>
+        <button onclick="openModal()" class="btn-ghost btn-sm w-full mb-3">
+          <i data-lucide="key-round" class="w-4 h-4"></i>Enter Connection Code
+          <span class="kbd ml-auto">⌘K</span>
+        </button>
+        <button onclick="simulateConnection()" class="btn-primary w-full">
+          <i data-lucide="smartphone" class="w-4 h-4"></i>Simulate Phone Connection
+          <span class="text-orange-200 text-xs ml-1">Demo</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 1B — Connecting animation                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen1b" class="screen" style="flex-direction:column">
+  <div class="glass rounded-3xl p-12 max-w-sm w-full text-center anim-scale">
+    <div class="relative w-32 h-32 mx-auto mb-8">
+      <div class="absolute inset-0 rounded-full success-ring" style="animation-delay:0s"></div>
+      <div class="absolute inset-0 rounded-full success-ring" style="animation-delay:.5s"></div>
+      <div class="absolute inset-0 rounded-full bg-green-50 flex items-center justify-center">
+        <svg class="w-14 h-14" viewBox="0 0 56 56" fill="none">
+          <circle cx="28" cy="28" r="24" fill="#DCFCE7"/>
+          <path class="check-path" d="M18 28 L25 35 L38 20" stroke="#22C55E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+    </div>
+    <h2 class="text-2xl text-gray-800 mb-2" style="font-weight:700">Device Connected</h2>
+    <p class="text-gray-500 text-sm">Your phone is ready. Preparing incoming files…</p>
+    <div class="flex items-center justify-center gap-4 mt-6">
+      <div class="glass-light px-3 py-2 rounded-xl flex items-center gap-2">
+        <i data-lucide="laptop" class="w-4 h-4 text-orange-500"></i>
+        <span class="text-xs text-gray-600" style="font-weight:500">MacBook Pro</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <div class="w-2 h-2 rounded-full bg-green-400" style="animation:badgePulse 1s .0s ease-in-out infinite"></div>
+        <div class="w-2 h-2 rounded-full bg-green-400 mx-0.5" style="animation:badgePulse 1s .2s ease-in-out infinite"></div>
+        <div class="w-2 h-2 rounded-full bg-green-400" style="animation:badgePulse 1s .4s ease-in-out infinite"></div>
+      </div>
+      <div class="glass-light px-3 py-2 rounded-xl flex items-center gap-2">
+        <i data-lucide="smartphone" class="w-4 h-4 text-orange-500"></i>
+        <span class="text-xs text-gray-600" style="font-weight:500">iPhone 15</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 2 — Incoming File Queue (with per-file deselect)   -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen2" class="screen" style="align-items:flex-start;padding-top:88px">
+  <div class="w-full max-w-2xl mx-auto">
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+        <i data-lucide="download" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Incoming Files</h2>
+        <p class="text-sm text-gray-500">iPhone 15 wants to send you <span id="incomingCountLabel">4</span> files</p>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full connected-badge" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25)">
+        <div class="w-2 h-2 rounded-full bg-green-400"></div>
+        <span class="text-xs text-green-700" style="font-weight:500">Connected</span>
+      </div>
+    </div>
+
+    <!-- NEW: Selection hint banner -->
+    <div id="deselectionHint" class="glass-light rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2 anim-fade" style="animation-delay:.04s">
+      <i data-lucide="info" class="w-3.5 h-3.5 text-gray-400 shrink-0"></i>
+      <p class="text-xs text-gray-500">Tap a file row to deselect it. Only selected files will be transferred.</p>
+      <button onclick="this.parentElement.remove()" class="ml-auto w-5 h-5 rounded-full flex items-center justify-center hover:bg-black/05 transition-colors shrink-0">
+        <i data-lucide="x" class="w-3 h-3 text-gray-400"></i>
+      </button>
+    </div>
+
+    <!-- File list with deselect toggle -->
+    <div class="glass rounded-2xl overflow-hidden mb-5 anim-slide" style="animation-delay:.08s">
+      <div class="px-5 py-4 border-b border-gray-100/60 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600" style="font-weight:600">Files to receive</span>
+          <span id="selectedBadge" class="px-2 py-0.5 rounded-full text-xs" style="background:rgba(255,122,26,.1);color:#C05000;font-weight:500">4 selected</span>
+        </div>
+        <span class="text-xs text-gray-400" id="selectedSizeLabel">2.63 GB total</span>
+      </div>
+      <div class="divide-y divide-gray-50" id="incomingFileList">
+
+        <!-- File row — toggleable selection -->
+        <div class="file-row file-deselect-row flex items-center gap-4 px-5 py-4 cursor-pointer" data-idx="0" onclick="toggleFileSelection(0)">
+          <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all" id="sel0" style="border-color:#FF7A1A;background:#FF7A1A">
+            <i data-lucide="check" class="w-3 h-3 text-white"></i>
+          </div>
+          <div class="file-preview-wrap">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+              <i data-lucide="video" class="w-5 h-5" style="color:#EF4444"></i>
+            </div>
+            <!-- Preview tooltip card -->
+            <div class="file-preview-card glass rounded-xl p-3">
+              <div class="w-full h-16 rounded-lg mb-2 flex items-center justify-center" style="background:linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05))">
+                <i data-lucide="video" class="w-6 h-6" style="color:#EF4444;opacity:.6"></i>
+              </div>
+              <p class="text-xs text-gray-700 truncate" style="font-weight:600">Vacation.mp4</p>
+              <p class="text-xs text-gray-400 mt-0.5">2.4 GB · MP4 · ~56 sec to receive</p>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-800 truncate" style="font-weight:500">Vacation.mp4</p>
+            <p class="text-xs text-gray-400 mt-0.5">2.4 GB · MP4 Video</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs badge-anim" style="font-weight:500;background:rgba(255,122,26,.1);color:#C05000">Queued</span>
+        </div>
+
+        <div class="file-row file-deselect-row flex items-center gap-4 px-5 py-4 cursor-pointer" data-idx="1" onclick="toggleFileSelection(1)">
+          <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all" id="sel1" style="border-color:#FF7A1A;background:#FF7A1A">
+            <i data-lucide="check" class="w-3 h-3 text-white"></i>
+          </div>
+          <div class="file-preview-wrap">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(59,130,246,.1)">
+              <i data-lucide="image" class="w-5 h-5" style="color:#3B82F6"></i>
+            </div>
+            <div class="file-preview-card glass rounded-xl p-3">
+              <div class="w-full h-16 rounded-lg mb-2 flex items-center justify-center" style="background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(59,130,246,.05))">
+                <i data-lucide="image" class="w-6 h-6" style="color:#3B82F6;opacity:.6"></i>
+              </div>
+              <p class="text-xs text-gray-700 truncate" style="font-weight:600">IMG_1032.jpg</p>
+              <p class="text-xs text-gray-400 mt-0.5">4.1 MB · JPEG · &lt;1 sec</p>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-800 truncate" style="font-weight:500">IMG_1032.jpg</p>
+            <p class="text-xs text-gray-400 mt-0.5">4.1 MB · JPEG Image</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Waiting</span>
+        </div>
+
+        <div class="file-row file-deselect-row flex items-center gap-4 px-5 py-4 cursor-pointer" data-idx="2" onclick="toggleFileSelection(2)">
+          <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all" id="sel2" style="border-color:#FF7A1A;background:#FF7A1A">
+            <i data-lucide="check" class="w-3 h-3 text-white"></i>
+          </div>
+          <div class="file-preview-wrap">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+              <i data-lucide="file" class="w-5 h-5" style="color:#EF4444"></i>
+            </div>
+            <div class="file-preview-card glass rounded-xl p-3">
+              <div class="w-full h-16 rounded-lg mb-2 flex items-center justify-center" style="background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(239,68,68,.03))">
+                <i data-lucide="file" class="w-6 h-6" style="color:#EF4444;opacity:.5"></i>
+              </div>
+              <p class="text-xs text-gray-700 truncate" style="font-weight:600">Resume.pdf</p>
+              <p class="text-xs text-gray-400 mt-0.5">750 KB · PDF · &lt;1 sec</p>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-800 truncate" style="font-weight:500">Resume.pdf</p>
+            <p class="text-xs text-gray-400 mt-0.5">750 KB · PDF Document</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Waiting</span>
+        </div>
+
+        <div class="file-row file-deselect-row flex items-center gap-4 px-5 py-4 cursor-pointer" data-idx="3" onclick="toggleFileSelection(3)">
+          <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all" id="sel3" style="border-color:#FF7A1A;background:#FF7A1A">
+            <i data-lucide="check" class="w-3 h-3 text-white"></i>
+          </div>
+          <div class="file-preview-wrap">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(168,85,247,.1)">
+              <i data-lucide="file-archive" class="w-5 h-5" style="color:#A855F7"></i>
+            </div>
+            <div class="file-preview-card glass rounded-xl p-3">
+              <div class="w-full h-16 rounded-lg mb-2 flex items-center justify-center" style="background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.04))">
+                <i data-lucide="file-archive" class="w-6 h-6" style="color:#A855F7;opacity:.6"></i>
+              </div>
+              <p class="text-xs text-gray-700 truncate" style="font-weight:600">Music.zip</p>
+              <p class="text-xs text-gray-400 mt-0.5">230 MB · ZIP · ~5 sec</p>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-800 truncate" style="font-weight:500">Music.zip</p>
+            <p class="text-xs text-gray-400 mt-0.5">230 MB · ZIP Archive</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs" style="font-weight:500;background:rgba(34,197,94,.1);color:#15803D">Ready</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Folder not chosen -->
+    <div id="folderCard" class="glass rounded-2xl p-5 mb-5 anim-slide" style="animation-delay:.14s;border:1.5px solid rgba(255,122,26,.2);background:rgba(255,244,236,.75)">
+      <div class="flex items-start gap-4">
+        <div class="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+          <i data-lucide="folder-open" class="w-6 h-6 text-orange-500"></i>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-sm text-gray-800 mb-1" style="font-weight:600">Choose where to save files</h3>
+          <p class="text-xs text-gray-500 leading-relaxed mb-3">For your privacy, files are only saved to folders you explicitly select. No file is written until you approve.</p>
+          <button id="chooseFolderBtn" onclick="chooseFolder()" class="btn-primary btn-sm">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>Choose Folder
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder chosen -->
+    <div id="folderSelected" class="hidden glass rounded-2xl p-5 mb-5" style="border:1.5px solid rgba(34,197,94,.25);background:rgba(240,253,244,.8)">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(34,197,94,.1)">
+          <i data-lucide="check-circle" class="w-6 h-6 text-green-500"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-green-700 mb-0.5" style="font-weight:500">Save location selected</p>
+          <p class="text-sm text-gray-800 truncate" style="font-weight:600">Downloads/DropIt</p>
+        </div>
+        <button onclick="changeFolder()" class="btn-ghost btn-sm">Change</button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3 anim-slide" style="animation-delay:.2s">
+      <button onclick="openDeclineModal()" class="btn-ghost flex-1 danger">
+        <i data-lucide="x" class="w-4 h-4"></i>Decline
+      </button>
+      <div class="tooltip-wrap flex-1">
+        <span id="acceptTooltip" class="tooltip-tip">Select a save folder first</span>
+        <button id="acceptBtn" onclick="goToApproval()" class="btn-primary w-full" disabled>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>Review &amp; Accept
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-center gap-6 mt-5 text-xs text-gray-400 anim-slide" style="animation-delay:.24s">
+      <span><strong class="text-gray-600" id="s2CountFoot">4</strong> files</span>
+      <span class="w-px h-4 bg-gray-200"></span>
+      <span><strong class="text-gray-600" id="s2SizeFoot">2.63 GB</strong> total</span>
+      <span class="w-px h-4 bg-gray-200"></span>
+      <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-green-500"></i>End-to-end encrypted</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 3 — Transfer Approval                               -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen3" class="screen" style="align-items:flex-start;padding-top:88px">
+  <div class="w-full max-w-2xl mx-auto">
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <button onclick="showScreen('screen2')" class="w-9 h-9 rounded-xl glass-light flex items-center justify-center hover:bg-white/80 transition-colors" aria-label="Go back">
+        <i data-lucide="arrow-left" class="w-4 h-4 text-gray-600"></i>
+      </button>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Confirm Transfer</h2>
+        <p class="text-sm text-gray-500">Review the details before receiving</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-4 mb-5 anim-slide" style="animation-delay:.06s">
+      <div class="glass-light rounded-2xl p-4 text-center hover-lift">
+        <div class="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center mx-auto mb-2">
+          <i data-lucide="files" class="w-4 h-4 text-orange-500"></i>
+        </div>
+        <p class="text-xl text-gray-800" style="font-weight:700" id="s3FileCount">4</p>
+        <p class="text-xs text-gray-400 mt-0.5">Total Files</p>
+      </div>
+      <div class="glass-light rounded-2xl p-4 text-center hover-lift">
+        <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-2">
+          <i data-lucide="hard-drive" class="w-4 h-4 text-blue-500"></i>
+        </div>
+        <p class="text-xl text-gray-800" id="s3TotalSize" style="font-weight:700">2.63<span class="text-sm text-gray-400 font-normal"> GB</span></p>
+        <p class="text-xs text-gray-400 mt-0.5">Total Size</p>
+      </div>
+      <div class="glass-light rounded-2xl p-4 text-center hover-lift">
+        <div class="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center mx-auto mb-2">
+          <i data-lucide="zap" class="w-4 h-4 text-green-500"></i>
+        </div>
+        <p class="text-sm text-gray-800" style="font-weight:700">~2 min</p>
+        <p class="text-xs text-gray-400 mt-0.5">Est. Time</p>
+      </div>
+    </div>
+
+    <div class="glass rounded-2xl overflow-hidden mb-5 anim-slide" style="animation-delay:.1s">
+      <div class="px-5 py-4 border-b border-gray-100/60 flex items-center justify-between">
+        <span class="text-sm text-gray-600" style="font-weight:600">Files to receive</span>
+        <span id="s3Badge" class="text-xs px-2 py-0.5 rounded-full" style="background:rgba(255,122,26,.1);color:#C05000;font-weight:500">4 items</span>
+      </div>
+      <div class="p-3 space-y-1" id="s3FileList">
+        <div class="approval-file-row flex items-center gap-3 px-3 py-2.5">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+            <i data-lucide="video" class="w-4 h-4" style="color:#EF4444"></i>
+          </div>
+          <div class="flex-1 min-w-0"><p class="text-sm text-gray-800 truncate" style="font-weight:500">Vacation.mp4</p></div>
+          <span class="text-xs text-gray-400 shrink-0">2.4 GB</span>
+        </div>
+        <div class="approval-file-row flex items-center gap-3 px-3 py-2.5">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(59,130,246,.1)">
+            <i data-lucide="image" class="w-4 h-4" style="color:#3B82F6"></i>
+          </div>
+          <div class="flex-1 min-w-0"><p class="text-sm text-gray-800 truncate" style="font-weight:500">IMG_1032.jpg</p></div>
+          <span class="text-xs text-gray-400 shrink-0">4.1 MB</span>
+        </div>
+        <div class="approval-file-row flex items-center gap-3 px-3 py-2.5">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(239,68,68,.1)">
+            <i data-lucide="file" class="w-4 h-4" style="color:#EF4444"></i>
+          </div>
+          <div class="flex-1 min-w-0"><p class="text-sm text-gray-800 truncate" style="font-weight:500">Resume.pdf</p></div>
+          <span class="text-xs text-gray-400 shrink-0">750 KB</span>
+        </div>
+        <div class="approval-file-row flex items-center gap-3 px-3 py-2.5">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(168,85,247,.1)">
+            <i data-lucide="file-archive" class="w-4 h-4" style="color:#A855F7"></i>
+          </div>
+          <div class="flex-1 min-w-0"><p class="text-sm text-gray-800 truncate" style="font-weight:500">Music.zip</p></div>
+          <span class="text-xs text-gray-400 shrink-0">230 MB</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass-light rounded-2xl px-5 py-4 mb-5 flex items-center gap-4 anim-slide" style="animation-delay:.14s">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:rgba(34,197,94,.1)">
+        <i data-lucide="folder-open" class="w-4 h-4 text-green-500"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs text-gray-400 mb-0.5">Saving to</p>
+        <p class="text-sm text-gray-800 truncate" style="font-weight:600">Downloads/DropIt</p>
+      </div>
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2)">
+        <i data-lucide="check" class="w-3 h-3 text-green-600"></i>
+        <span class="text-xs text-green-700" style="font-weight:500">Ready</span>
+      </div>
+    </div>
+
+    <div class="flex items-start gap-3 px-4 py-3 rounded-xl mb-5 anim-slide" style="animation-delay:.17s;background:rgba(255,122,26,.06);border:1px solid rgba(255,122,26,.15)">
+      <i data-lucide="shield-check" class="w-4 h-4 text-orange-500 shrink-0 mt-0.5"></i>
+      <p class="text-xs text-gray-600 leading-relaxed">Transfer is encrypted end-to-end over a direct peer-to-peer connection. Files go directly from iPhone 15 to your Mac — no server in between.</p>
+    </div>
+
+    <div class="flex gap-3 anim-slide" style="animation-delay:.2s">
+      <button onclick="openDeclineModal()" class="btn-ghost flex-1 danger">
+        <i data-lucide="x" class="w-4 h-4"></i>Decline
+      </button>
+      <button onclick="acceptTransfer()" class="btn-primary flex-1" style="font-size:16px">
+        <i data-lucide="download" class="w-4 h-4"></i>Accept &amp; Receive
+        <span class="kbd" style="color:rgba(255,255,255,.5);border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1)">↵</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 4 — Active Transfer (+ diagnostics panel)          -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen4" class="screen" style="align-items:flex-start;padding-top:88px">
+  <div class="w-full max-w-2xl mx-auto">
+
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+        <i data-lucide="download" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Receiving Files</h2>
+        <p class="text-sm text-gray-500">Do not disconnect your devices</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div id="transferStatusBadge" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style="background:rgba(255,122,26,.08);border:1px solid rgba(255,122,26,.2)">
+          <i data-lucide="loader-circle" class="w-3 h-3 text-orange-500 animate-spin"></i>
+          <span class="text-xs text-orange-700" style="font-weight:500">Transferring</span>
+        </div>
+        <button id="pauseBtn" onclick="togglePause()" class="btn-ghost btn-sm btn-icon" aria-label="Pause transfer" title="Pause transfer">
+          <i data-lucide="pause" class="w-4 h-4 text-gray-500"></i>
+        </button>
+        <button onclick="confirmCancelTransfer()" class="btn-ghost btn-sm btn-icon danger" aria-label="Cancel transfer" title="Cancel transfer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Paused banner -->
+    <div id="pausedBanner" class="paused-banner mb-4">
+      <i data-lucide="pause-circle" class="w-4 h-4 text-amber-500 shrink-0"></i>
+      <span class="text-sm text-amber-700" style="font-weight:500">Transfer paused — your phone is waiting</span>
+      <button onclick="togglePause()" class="ml-auto btn-primary btn-sm" style="padding:4px 12px;font-size:12px;box-shadow:none">Resume</button>
+    </div>
+
+    <!-- Ring + stats -->
+    <div class="glass rounded-2xl p-6 mb-5 anim-slide" style="animation-delay:.06s">
+      <div class="flex items-center gap-6">
+        <div class="relative shrink-0">
+          <svg width="128" height="128" class="progress-ring">
+            <circle cx="64" cy="64" r="56" fill="none" stroke="#F0ECE8" stroke-width="8"/>
+            <circle id="overallRing" cx="64" cy="64" r="56" fill="none" stroke="#FF7A1A" stroke-width="8"
+              stroke-dasharray="351.9" stroke-dashoffset="351.9" class="progress-ring-circle"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="overallPct" class="text-2xl text-gray-800" style="font-weight:700">0%</span>
+            <span class="text-xs text-gray-400 mt-0.5" id="overallLabel">Overall</span>
+          </div>
+        </div>
+        <div class="flex-1 grid grid-cols-2 gap-3 stats-grid">
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Speed</p>
+            <p id="statSpeed" class="text-sm text-gray-800" style="font-weight:600">— MB/s</p>
+            <canvas id="sparkCanvas" width="80" height="20" class="sparkline mt-1" style="opacity:.5"></canvas>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Remaining</p>
+            <p id="statTime" class="text-sm text-gray-800" style="font-weight:600">Calculating…</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Completed</p>
+            <p id="statFiles" class="text-sm text-gray-800" style="font-weight:600">0 / 4</p>
+          </div>
+          <div class="glass-light rounded-xl p-3 cursor-pointer hover-lift" onclick="toggleDiagnostics()" title="View connection diagnostics">
+            <p class="text-xs text-gray-400 mb-1">Connection</p>
+            <p class="text-gray-800" style="font-weight:600;font-size:11px">P2P · Encrypted</p>
+            <div class="flex items-center gap-1 mt-1">
+              <div class="w-1.5 h-1.5 rounded-full bg-green-400"></div>
+              <span class="text-xs text-gray-400">Stable</span>
+              <i data-lucide="chevron-down" class="w-3 h-3 text-gray-300 ml-auto" id="diagChevron"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NEW: Diagnostics panel (expandable) -->
+      <div id="diagPanel" class="diag-panel mt-4">
+        <div class="border-t border-gray-100/60 pt-4">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm text-gray-600" style="font-weight:600">Connection Diagnostics</p>
+            <span class="text-xs px-2 py-0.5 rounded-full" style="background:rgba(34,197,94,.1);color:#15803D;font-weight:500">● Healthy</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="glass-light rounded-xl px-3 py-2.5">
+              <p class="text-xs text-gray-400 mb-1">Latency</p>
+              <p class="text-sm text-gray-800" style="font-weight:600"><span id="diagLatency">4</span> ms</p>
+            </div>
+            <div class="glass-light rounded-xl px-3 py-2.5">
+              <p class="text-xs text-gray-400 mb-1">Protocol</p>
+              <p class="text-sm text-gray-800" style="font-weight:600">WebRTC / QUIC</p>
+            </div>
+            <div class="glass-light rounded-xl px-3 py-2.5">
+              <p class="text-xs text-gray-400 mb-1">Packet loss</p>
+              <p class="text-sm text-gray-800" style="font-weight:600"><span id="diagPacketLoss">0.0</span>%</p>
+            </div>
+            <div class="glass-light rounded-xl px-3 py-2.5">
+              <p class="text-xs text-gray-400 mb-1">Signal</p>
+              <div class="flex items-end gap-0.5 mt-1" id="diagSignalBars">
+                <div class="signal-bar active" style="height:5px"></div>
+                <div class="signal-bar active" style="height:8px"></div>
+                <div class="signal-bar active" style="height:11px"></div>
+                <div class="signal-bar active" style="height:14px"></div>
+              </div>
+            </div>
+            <div class="glass-light rounded-xl px-3 py-2.5 col-span-2">
+              <p class="text-xs text-gray-400 mb-1.5">Transferred so far</p>
+              <div class="flex items-center gap-3">
+                <div class="pbar flex-1"><div id="diagFillBar" class="pbar-fill" style="width:0%"></div></div>
+                <span id="diagBytes" class="text-xs text-gray-600" style="font-weight:500;white-space:nowrap">0 B</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-file progress -->
+    <div class="glass rounded-2xl overflow-hidden anim-slide" style="animation-delay:.12s">
+      <div class="px-5 py-3 border-b border-gray-100/60 flex items-center justify-between">
+        <span class="text-sm text-gray-600" style="font-weight:600">File Progress</span>
+        <span class="text-xs text-gray-400 flex items-center gap-1">
+          <span class="kbd">Space</span> pause &nbsp; <span class="kbd">Esc</span> cancel
+        </span>
+      </div>
+      <div id="fileProgressItems" class="divide-y divide-gray-50"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN 5 — Transfer Complete                               -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screen5" class="screen" style="flex-direction:column">
+  <div class="w-full max-w-md mx-auto text-center">
+    <div class="relative w-36 h-36 mx-auto mb-8">
+      <div class="success-particle" style="left:50%;top:50%;background:#FF7A1A;--dur:2.2s;--delay:0s"></div>
+      <div class="success-particle" style="left:30%;top:60%;background:#22C55E;--dur:2.5s;--delay:.3s"></div>
+      <div class="success-particle" style="left:70%;top:55%;background:#FF9A4A;--dur:2s;--delay:.6s"></div>
+      <div class="success-particle" style="left:45%;top:65%;background:#FFC899;--dur:2.8s;--delay:.15s"></div>
+      <div class="success-particle" style="left:60%;top:40%;background:#A855F7;--dur:2.3s;--delay:.45s"></div>
+      <div class="success-ring" style="animation-delay:0s"></div>
+      <div class="success-ring" style="animation-delay:.5s"></div>
+      <div class="absolute inset-0 rounded-full bg-green-50 flex items-center justify-center">
+        <svg class="w-16 h-16" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" fill="#DCFCE7"/>
+          <path d="M20 32 L28 40 L44 24" stroke="#22C55E" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"
+            style="stroke-dasharray:50;stroke-dashoffset:50;animation:checkDraw .6s .4s cubic-bezier(.22,.68,0,1.2) forwards"/>
+        </svg>
+      </div>
+    </div>
+    <h2 class="text-3xl text-gray-900 mb-2 anim-fade" style="font-weight:800">Transfer Complete</h2>
+    <p class="text-gray-500 anim-fade" style="animation-delay:.05s">All files saved securely to your Mac.</p>
+
+    <div class="glass rounded-2xl p-6 mt-6 mb-6 text-left anim-slide" style="animation-delay:.1s">
+      <div class="space-y-0">
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="files" class="w-3.5 h-3.5 text-gray-400"></i>Files received</span>
+          <span class="text-sm text-gray-800" style="font-weight:600">4 files</span>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-gray-400"></i>Total size</span>
+          <span class="text-sm text-gray-800" style="font-weight:600">2.63 GB</span>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="folder-open" class="w-3.5 h-3.5 text-gray-400"></i>Saved to</span>
+          <span class="text-sm text-gray-800 font-mono" style="font-weight:600;font-size:13px">Downloads/DropIt</span>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>Transfer time</span>
+          <span class="text-sm text-gray-800" style="font-weight:600" id="finalDuration">2m 14s</span>
+        </div>
+        <div class="flex items-center justify-between py-3">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-gray-400"></i>Security</span>
+          <span class="text-sm flex items-center gap-1.5" style="font-weight:500;color:#15803D">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>End-to-end encrypted
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-3 anim-slide" style="animation-delay:.18s">
+      <button onclick="openFolder()" class="btn-primary w-full" style="font-size:16px">
+        <i data-lucide="folder-open" class="w-4 h-4"></i>Open Folder
+      </button>
+      <div class="flex gap-3">
+        <button onclick="receiveMore()" class="btn-ghost flex-1">
+          <i data-lucide="download" class="w-4 h-4"></i>Receive More
+        </button>
+        <button onclick="viewHistory()" class="btn-ghost flex-1">
+          <i data-lucide="clock" class="w-4 h-4"></i>View History
+        </button>
+        <button onclick="goHome()" class="btn-ghost flex-1">
+          <i data-lucide="check" class="w-4 h-4"></i>Done
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN S1 — Send: Pick Files (with drag-to-reorder)       -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screenS1" class="screen" style="align-items:flex-start;padding-top:88px">
+  <input type="file" id="fileInput" multiple style="display:none" onchange="handleFileInput(this)">
+  <div class="w-full max-w-2xl mx-auto">
+
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <button onclick="goToReceiveMode()" class="w-9 h-9 rounded-xl glass-light flex items-center justify-center hover:bg-white/80 transition-colors" aria-label="Back">
+        <i data-lucide="arrow-left" class="w-4 h-4 text-gray-600"></i>
+      </button>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Select Files to Send</h2>
+        <p class="text-sm text-gray-500">Choose files from your computer</p>
+      </div>
+    </div>
+
+    <!-- Drop zone -->
+    <div id="dropZone" class="drop-zone mb-5 anim-slide" style="animation-delay:.06s"
+      onclick="document.getElementById('fileInput').click()"
+      ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+      <div id="dropZoneEmpty">
+        <div class="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto mb-4">
+          <i data-lucide="upload-cloud" class="w-8 h-8 text-orange-400"></i>
+        </div>
+        <p class="text-gray-700 mb-1" style="font-weight:600;font-size:16px">Drop files here</p>
+        <p class="text-sm text-gray-400 mb-4">or click to browse</p>
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm glass-light text-gray-500">
+          <i data-lucide="folder-open" class="w-4 h-4 text-orange-400"></i>Browse Files
+        </div>
+        <p class="text-xs text-gray-400 mt-3">Any file type · No size limit</p>
+      </div>
+      <div id="dropZoneFiles" class="hidden"><!-- chips --></div>
+    </div>
+
+    <!-- Add more files -->
+    <div id="addMoreZone" class="hidden mb-5">
+      <button onclick="document.getElementById('fileInput').click()"
+        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-orange-300 hover:bg-orange-50/50 transition-all text-gray-500 hover:text-orange-600" style="font-size:13px;font-weight:500">
+        <i data-lucide="plus-circle" class="w-4 h-4"></i>Add more files
+      </button>
+    </div>
+
+    <!-- NEW: Drag-to-reorder hint (shown once files are added) -->
+    <div id="reorderHint" class="hidden glass-light rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2">
+      <i data-lucide="grip-vertical" class="w-3.5 h-3.5 text-gray-400 shrink-0"></i>
+      <p class="text-xs text-gray-500">Drag the <i data-lucide="grip-vertical" class="w-3 h-3 inline-block align-middle text-gray-400"></i> handle to reorder files — higher files send first.</p>
+    </div>
+
+    <!-- Summary bar -->
+    <div id="sendSummaryBar" class="hidden glass-light rounded-2xl px-5 py-4 mb-5 flex items-center gap-4 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+        <i data-lucide="files" class="w-4 h-4 text-orange-500"></i>
+      </div>
+      <div class="flex-1">
+        <p class="text-sm text-gray-800" style="font-weight:600"><span id="sendFileCount">0</span> files selected</p>
+        <p class="text-xs text-gray-400 mt-0.5"><span id="sendTotalSize">0 B</span> total</p>
+      </div>
+      <button onclick="clearAllFiles()" class="btn-ghost btn-sm danger" style="padding:6px 12px">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Clear all
+      </button>
+    </div>
+
+    <div class="anim-slide" style="animation-delay:.12s">
+      <div class="tooltip-wrap w-full">
+        <span id="sendNextTooltip" class="tooltip-tip">Add files to continue</span>
+        <button id="sendNextBtn" onclick="goToSendConnect()" class="btn-primary w-full" disabled style="font-size:16px">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>Continue — Choose Receiver
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN S2 — Send: Connect to Receiver                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screenS2" class="screen" style="align-items:flex-start;padding-top:88px">
+  <div class="w-full max-w-2xl mx-auto">
+
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <button onclick="showScreen('screenS1')" class="w-9 h-9 rounded-xl glass-light flex items-center justify-center hover:bg-white/80 transition-colors">
+        <i data-lucide="arrow-left" class="w-4 h-4 text-gray-600"></i>
+      </button>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Connect to Receiver</h2>
+        <p class="text-sm text-gray-500">Enter the code shown on the receiving device</p>
+      </div>
+    </div>
+
+    <div class="glass-light rounded-2xl px-4 py-3 mb-5 flex items-center gap-3 anim-slide" style="animation-delay:.04s">
+      <div class="flex items-center gap-2 flex-1 min-w-0">
+        <i data-lucide="check-circle" class="w-4 h-4 text-green-500 shrink-0"></i>
+        <span class="text-sm text-gray-600" style="font-weight:500"><span id="s2FileCount">0</span> files ready to send · <span id="s2TotalSize">0</span></span>
+      </div>
+      <button onclick="showScreen('screenS1')" class="text-xs text-orange-500 hover:text-orange-600 font-medium transition-colors">Edit</button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 mb-5 anim-slide" style="animation-delay:.08s">
+      <div class="glass rounded-2xl p-6" style="border:1.5px solid rgba(255,122,26,.15)">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+            <i data-lucide="key-round" class="w-4 h-4 text-orange-500"></i>
+          </div>
+          <div>
+            <p class="text-sm text-gray-800" style="font-weight:600">Enter receiver's code</p>
+            <p class="text-xs text-gray-400">Ask the receiver to share their connection code</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mb-4">
+          <input id="recvCodeA" class="code-input flex-1" placeholder="A8K4" maxlength="4" autocomplete="off" spellcheck="false"
+            oninput="handleSendCodeInput(this,'recvCodeB')" style="width:auto;flex:1" />
+          <span class="text-xl text-gray-400">—</span>
+          <input id="recvCodeB" class="code-input flex-1" placeholder="92MP" maxlength="4" autocomplete="off" spellcheck="false"
+            oninput="handleSendCodeInput(this,null)" style="width:auto;flex:1" />
+        </div>
+        <div id="sendConnectError" class="hidden mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100">
+          <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
+          <span class="text-xs text-red-600">Code not found. Check and try again.</span>
+        </div>
+        <button id="sendConnectBtn" onclick="connectToReceiver()" class="btn-primary w-full">
+          <i data-lucide="link" class="w-4 h-4"></i>Connect &amp; Send
+        </button>
+      </div>
+
+      <div class="glass-light rounded-2xl p-5 flex items-center gap-4">
+        <div class="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+          <i data-lucide="qr-code" class="w-4 h-4 text-gray-500"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-gray-700" style="font-weight:500">Or let them scan your code</p>
+          <p class="text-xs text-gray-400 mt-0.5">Ask the receiver to scan your QR or enter your code</p>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <span class="font-mono text-sm text-gray-700" style="font-weight:600;letter-spacing:.1em">B3F7—18QX</span>
+          <button onclick="copySendCode()" class="text-xs text-orange-500 hover:text-orange-600 font-medium transition-colors flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i>Copy
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-xs text-center text-gray-400 anim-slide" style="animation-delay:.12s">
+      <i data-lucide="shield-check" class="w-3 h-3 text-green-500 inline-block mr-1" style="vertical-align:middle"></i>
+      Files transfer directly between devices. Nothing touches a server.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN S3 — Sending: Connecting animation                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screenS3" class="screen" style="flex-direction:column">
+  <div class="glass rounded-3xl p-12 max-w-sm w-full text-center anim-scale">
+    <div class="relative w-28 h-28 mx-auto mb-6">
+      <svg width="112" height="112" style="position:absolute;inset:0">
+        <circle cx="56" cy="56" r="48" fill="none" stroke="#F0ECE8" stroke-width="4"/>
+        <circle id="connectingRing" cx="56" cy="56" r="48" fill="none" stroke="#FF7A1A" stroke-width="4"
+          stroke-dasharray="301.6" stroke-dashoffset="301.6" stroke-linecap="round"
+          style="transform-origin:center;transform:rotate(-90deg);transition:stroke-dashoffset .4s"/>
+      </svg>
+      <div class="absolute inset-0 flex items-center justify-center">
+        <div class="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center">
+          <i data-lucide="upload" class="w-7 h-7 text-orange-500"></i>
+        </div>
+      </div>
+    </div>
+    <h2 class="text-xl text-gray-800 mb-2" style="font-weight:700" id="connectingTitle">Connecting…</h2>
+    <p class="text-gray-500 text-sm" id="connectingSubtitle">Finding the receiving device</p>
+    <div class="flex items-center justify-center gap-2 mt-5">
+      <div class="w-2 h-2 rounded-full bg-orange-300" style="animation:badgePulse 1s 0s ease-in-out infinite"></div>
+      <div class="w-2 h-2 rounded-full bg-orange-400" style="animation:badgePulse 1s .2s ease-in-out infinite"></div>
+      <div class="w-2 h-2 rounded-full bg-orange-500" style="animation:badgePulse 1s .4s ease-in-out infinite"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN S4 — Active Sending                                 -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screenS4" class="screen" style="align-items:flex-start;padding-top:88px">
+  <div class="w-full max-w-2xl mx-auto">
+    <div class="flex items-center gap-3 mb-6 anim-slide">
+      <div class="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+        <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h2 class="text-xl text-gray-800" style="font-weight:700">Sending Files</h2>
+        <p class="text-sm text-gray-500">Keep this window open</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div id="sendStatusBadge" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style="background:rgba(255,122,26,.08);border:1px solid rgba(255,122,26,.2)">
+          <i data-lucide="loader-circle" class="w-3 h-3 text-orange-500 animate-spin"></i>
+          <span class="text-xs text-orange-700" style="font-weight:500">Sending</span>
+        </div>
+        <button id="sendPauseBtn" onclick="toggleSendPause()" class="btn-ghost btn-sm btn-icon" aria-label="Pause" title="Pause sending">
+          <i data-lucide="pause" class="w-4 h-4 text-gray-500"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="addMoreBanner" class="add-more-banner mb-4">
+      <div class="add-more-pulse glass rounded-2xl p-4 flex items-center gap-4" style="border:1.5px solid rgba(255,122,26,.3);background:rgba(255,247,237,.8)">
+        <div class="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-orange-500"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-gray-800" style="font-weight:600">Receiver wants more files</p>
+          <p class="text-xs text-gray-400 mt-0.5">Select additional files to send in the same session</p>
+        </div>
+        <button onclick="addMoreFiles()" class="btn-primary btn-sm" style="white-space:nowrap">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>Add Files
+        </button>
+      </div>
+    </div>
+
+    <div class="glass rounded-2xl p-6 mb-5 anim-slide" style="animation-delay:.06s">
+      <div class="flex items-center gap-6">
+        <div class="relative shrink-0">
+          <svg width="128" height="128" class="progress-ring">
+            <circle cx="64" cy="64" r="56" fill="none" stroke="#F0ECE8" stroke-width="8"/>
+            <circle id="sendOverallRing" cx="64" cy="64" r="56" fill="none" stroke="#FF7A1A" stroke-width="8"
+              stroke-dasharray="351.9" stroke-dashoffset="351.9" class="progress-ring-circle"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="sendOverallPct" class="text-2xl text-gray-800" style="font-weight:700">0%</span>
+            <span class="text-xs text-gray-400 mt-0.5">Sent</span>
+          </div>
+        </div>
+        <div class="flex-1 grid grid-cols-2 gap-3">
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Upload Speed</p>
+            <p id="sendStatSpeed" class="text-sm text-gray-800" style="font-weight:600">— MB/s</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Remaining</p>
+            <p id="sendStatTime" class="text-sm text-gray-800" style="font-weight:600">Calculating…</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Sent</p>
+            <p id="sendStatFiles" class="text-sm text-gray-800" style="font-weight:600">0 / 0</p>
+          </div>
+          <div class="glass-light rounded-xl p-3">
+            <p class="text-xs text-gray-400 mb-1">Receiver</p>
+            <p class="text-gray-800" style="font-weight:600;font-size:11px" id="sendReceiverName">MacBook Pro</p>
+            <div class="flex items-center gap-1 mt-1">
+              <div class="w-1.5 h-1.5 rounded-full bg-green-400"></div>
+              <span class="text-xs text-gray-400">Connected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass rounded-2xl overflow-hidden anim-slide" style="animation-delay:.12s">
+      <div class="px-5 py-3 border-b border-gray-100/60 flex items-center justify-between">
+        <span class="text-sm text-gray-600" style="font-weight:600">Sending</span>
+        <button id="addMoreDuringBtn" onclick="addMoreFiles()" class="hidden btn-ghost btn-sm" style="padding:5px 12px;font-size:12px">
+          <i data-lucide="plus" class="w-3 h-3"></i>Add more files
+        </button>
+      </div>
+      <div id="sendFileProgressItems" class="divide-y divide-gray-50"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCREEN S5 — Send Complete                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="screenS5" class="screen" style="flex-direction:column">
+  <div class="w-full max-w-md mx-auto text-center">
+    <div class="relative w-36 h-36 mx-auto mb-8">
+      <div class="success-particle" style="left:50%;top:50%;background:#FF7A1A;--dur:2.2s;--delay:0s"></div>
+      <div class="success-particle" style="left:35%;top:55%;background:#22C55E;--dur:2.5s;--delay:.3s"></div>
+      <div class="success-particle" style="left:65%;top:50%;background:#FF9A4A;--dur:2s;--delay:.6s"></div>
+      <div class="success-particle" style="left:50%;top:65%;background:#3B82F6;--dur:2.8s;--delay:.15s"></div>
+      <div class="success-ring" style="animation-delay:0s"></div>
+      <div class="success-ring" style="animation-delay:.6s"></div>
+      <div class="absolute inset-0 rounded-full bg-orange-50 flex items-center justify-center">
+        <svg class="w-16 h-16" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" fill="#FFF4EC"/>
+          <path d="M20 32 L28 40 L44 24" stroke="#FF7A1A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"
+            style="stroke-dasharray:50;stroke-dashoffset:50;animation:checkDraw .6s .4s cubic-bezier(.22,.68,0,1.2) forwards"/>
+        </svg>
+      </div>
+    </div>
+    <h2 class="text-3xl text-gray-900 mb-2 anim-fade" style="font-weight:800">Files Sent!</h2>
+    <p class="text-gray-500 anim-fade" style="animation-delay:.05s">All files delivered to the receiver.</p>
+
+    <div class="glass rounded-2xl p-6 mt-6 mb-6 text-left anim-slide" style="animation-delay:.1s">
+      <div class="space-y-0">
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="files" class="w-3.5 h-3.5 text-gray-400"></i>Files sent</span>
+          <span class="text-sm text-gray-800" id="sentFinalCount" style="font-weight:600">0 files</span>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-gray-400"></i>Total size</span>
+          <span class="text-sm text-gray-800" id="sentFinalSize" style="font-weight:600">—</span>
+        </div>
+        <div class="flex items-center justify-between py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="user" class="w-3.5 h-3.5 text-gray-400"></i>Received by</span>
+          <span class="text-sm text-gray-800" style="font-weight:600">MacBook Pro</span>
+        </div>
+        <div class="flex items-center justify-between py-3">
+          <span class="text-sm text-gray-500 flex items-center gap-2"><i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>Transfer time</span>
+          <span class="text-sm text-gray-800" id="sentFinalDuration" style="font-weight:600">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="sendMoreRequest" class="hidden glass-light rounded-2xl p-4 mb-4 flex items-center gap-3 text-left add-more-pulse" style="border:1.5px solid rgba(255,122,26,.2)">
+      <i data-lucide="inbox" class="w-5 h-5 text-orange-500 shrink-0"></i>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-gray-700" style="font-weight:500">They want more files</p>
+        <p class="text-xs text-gray-400">Receiver opened "Receive More"</p>
+      </div>
+      <button onclick="sendMoreFromComplete()" class="btn-primary btn-sm">Send More</button>
+    </div>
+
+    <div class="flex flex-col gap-3 anim-slide" style="animation-delay:.18s">
+      <button onclick="sendMoreFromComplete()" class="btn-primary w-full" style="font-size:16px">
+        <i data-lucide="plus-circle" class="w-4 h-4"></i>Send More Files
+      </button>
+      <button onclick="goHome()" class="btn-ghost w-full">
+        <i data-lucide="check" class="w-4 h-4"></i>Done
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="addMoreInput" multiple style="display:none" onchange="handleAddMoreInput(this)">
+
+ <!-- Socket.IO -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.js" integrity="sha512-8BHxHDLsOHx+flIrQ0DrZcea7MkHqRU5GbTHmbdzMRnAaoCIkZ97PqZcXJkKZckMMhqfoeaJE+DNUVuyoQsO3Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- Your WebRTC script -->
+  <script type="module" src="script.js"></script>
+  <script  type="module" src="socketEvents.js"></script>
+    <script type="module" src="socket.js"></script>
+    <script type="module" src="dataChannel.js"></script>
+        <script type="module" src="webRTCConnection.js"></script>
+    
+
+
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   DROPIT — Full continuation layer
+   All original logic preserved; new features layered on top.
+═══════════════════════════════════════════════════════════════ */
+
+document.addEventListener('DOMContentLoaded', function() {
+  lucide.createIcons();
+  drawQR();
+  startQRCountdown();
+  bindKeyboard();
+  populateHistoryList();
+});
+
+/* ── Screens ───────────────────────────────────────────────── */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+  var s = document.getElementById(id);
+  if (s) s.classList.add('active');
+  updateStepIndicator(id);
+  updateSignalIndicator(id);
+  setTimeout(function() { lucide.createIcons(); }, 60);
+}
+
+/* ── Step indicator ────────────────────────────────────────── */
+var STEP_MAP = { screen1:0, screen1b:0, screen2:1, screen3:2, screen4:3, screen5:3 };
+function updateStepIndicator(screenId) {
+  var ind = document.getElementById('stepIndicator');
+  var badge = document.getElementById('navConnectionBadge');
+  if (screenId === 'screen1' || screenId === 'screen1b' || screenId.startsWith('screenS')) {
+    ind.classList.add('hidden'); ind.classList.remove('flex');
+    badge.classList.add('hidden'); badge.classList.remove('flex');
+    return;
+  }
+  ind.classList.remove('hidden'); ind.classList.add('flex');
+  badge.classList.remove('hidden'); badge.classList.add('flex');
+  var step = STEP_MAP[screenId] || 0;
+  for (var i = 1; i <= 4; i++) {
+    var dot = document.getElementById('step'+i+'dot');
+    if (!dot) continue;
+    dot.className = 'step-dot' + (i-1 < step ? ' done' : i-1 === step ? ' active' : '');
+    if (i < 4) {
+      var line = document.getElementById('step'+i+'line');
+      if (line) line.className = 'step-line' + (i-1 < step ? ' done' : '');
+    }
+  }
+}
+
+/* ── NEW: Signal indicator visibility ──────────────────────── */
+function updateSignalIndicator(screenId) {
+  var sig = document.getElementById('signalIndicator');
+  var activeTransfer = (screenId === 'screen4' || screenId === 'screenS4');
+  if (activeTransfer) {
+    sig.classList.remove('hidden'); sig.classList.add('flex');
+    startSignalAnimation();
+  } else {
+    sig.classList.add('hidden'); sig.classList.remove('flex');
+    stopSignalAnimation();
+  }
+}
+
+var _sigInterval = null;
+function startSignalAnimation() {
+  if (_sigInterval) return;
+  _sigInterval = setInterval(updateSignalBars, 2000);
+  updateSignalBars();
+}
+function stopSignalAnimation() {
+  if (_sigInterval) { clearInterval(_sigInterval); _sigInterval = null; }
+}
+function updateSignalBars() {
+  var quality = Math.floor(Math.random() * 2) + 3; // 3 or 4 bars (demo is always good)
+  var bars = [document.getElementById('sigBar1'), document.getElementById('sigBar2'),
+              document.getElementById('sigBar3'), document.getElementById('sigBar4')];
+  bars.forEach(function(bar, i) {
+    if (!bar) return;
+    bar.classList.remove('active', 'warn', 'poor');
+    if (i < quality) bar.classList.add('active');
+  });
+  var label = document.getElementById('sigLabel');
+  if (label) label.textContent = quality >= 4 ? 'P2P · Strong' : quality >= 3 ? 'P2P · Good' : 'P2P · Weak';
+}
+
+/* ── QR canvas ─────────────────────────────────────────────── */
+function drawQR() {
+  var c = document.getElementById('qrCanvas');
+  if (!c) return;
+  var ctx = c.getContext('2d');
+  var size = 180, cells = 21, cell = size / cells;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.roundRect(0, 0, size, size, 12); ctx.fill();
+  function pr(x, y) {
+    var v = ((x * 31 + y * 17 + 0x4A8B) * 1103515245 + 12345) & 0x7fffffff;
+    return (v % 100) > 48;
+  }
+  function sq(x, y, w, h) { ctx.beginPath(); ctx.roundRect(x, y, w, h, 1.5); ctx.fill(); }
+  function finder(ox, oy) {
+    for (var fy = 0; fy < 7; fy++) for (var fx = 0; fx < 7; fx++) {
+      var inner = fy >= 1 && fy <= 5 && fx >= 1 && fx <= 5;
+      var core  = fy >= 2 && fy <= 4 && fx >= 2 && fx <= 4;
+      ctx.fillStyle = (!inner || core) ? '#1A1714' : '#FFFFFF';
+      sq((ox+fx)*cell+2, (oy+fy)*cell+2, cell-2, cell-2);
+    }
+  }
+  ctx.fillStyle = '#1A1714';
+  for (var y = 0; y < cells; y++) for (var x = 0; x < cells; x++) {
+    if ((x<9&&y<9)||(x>11&&y<9)||(x<9&&y>11)) continue;
+    if (pr(x,y)) sq(x*cell+2, y*cell+2, cell-2, cell-2);
+  }
+  finder(0,0); finder(14,0); finder(0,14);
+}
+
+/* ── QR countdown ──────────────────────────────────────────── */
+var _qrTotal = 180, _qrRemaining = 180, _qrInterval = null;
+function startQRCountdown() {
+  if (_qrInterval) clearInterval(_qrInterval);
+  _qrRemaining = _qrTotal;
+  _qrInterval = setInterval(tickQR, 1000);
+  tickQR();
+}
+function tickQR() {
+  _qrRemaining--;
+  var ring = document.getElementById('qrCountdownCircle');
+  var txt  = document.getElementById('qrCountdownText');
+  if (ring) ring.style.strokeDashoffset = (540.35 * (1 - _qrRemaining / _qrTotal)).toFixed(2);
+  if (txt) { var m = Math.floor(_qrRemaining/60), s = _qrRemaining%60; txt.textContent = m+':'+(s<10?'0':'')+s; }
+  if (_qrRemaining <= 0) {
+    var c = document.getElementById('qrCanvas');
+    if (c) c.classList.add('qr-refreshing');
+    setTimeout(function() { drawQR(); if (c) c.classList.remove('qr-refreshing'); }, 600);
+    _qrRemaining = _qrTotal;
+    showToast('QR code refreshed', 'refresh-cw', 'orange');
+  }
+}
+
+/* ── Copy code ─────────────────────────────────────────────── */
+function copyCode() {
+  const code = document.getElementById("connCodeDisplay").textContent
+  try { navigator.clipboard.writeText(code); } catch(e) {}
+  showToast('Connection code copied', 'check-circle', 'green');
+}
+
+/* ── Modal ─────────────────────────────────────────────────── */
+function openModal() {
+  document.getElementById('codeModal').classList.add('open');
+  ['codeA','codeB'].forEach(function(id) { var el=document.getElementById(id); el.value=''; el.classList.remove('error'); });
+  document.getElementById('modalError').classList.add('hidden');
+  var btn = document.getElementById('modalConnectBtn');
+  btn.innerHTML = '<i data-lucide="key-round" class="w-4 h-4"></i>Connect';
+  btn.disabled = false;
+  setTimeout(function() { document.getElementById('codeA').focus(); lucide.createIcons(); }, 100);
+}
+function closeModal() { document.getElementById('codeModal').classList.remove('open'); }
+function handleCodeInput(el, nextId) {
+  el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (el.value.length >= 4 && nextId) document.getElementById(nextId).focus();
+}
+function handleCodeKey(e, el, prevId, nextId) {
+  if (e.key === 'Backspace' && el.value === '' && prevId) { e.preventDefault(); document.getElementById(prevId).focus(); }
+  if (e.key === 'Enter') connectViaCode();
+}
+function connectViaCode() {
+  var a = document.getElementById('codeA').value.trim();
+  var b = document.getElementById('codeB').value.trim();
+  ['codeA','codeB'].forEach(function(id) { document.getElementById(id).classList.remove('error'); });
+  document.getElementById('modalError').classList.add('hidden');
+  if (a.length < 4 || b.length < 4) {
+    if (a.length < 4) document.getElementById('codeA').classList.add('error');
+    if (b.length < 4) document.getElementById('codeB').classList.add('error');
+    document.getElementById('modalError').classList.remove('hidden');
+    document.getElementById('modalErrorText').textContent = 'Please enter the full 4-character code in each field.';
+    return;
+  }
+  var btn = document.getElementById('modalConnectBtn');
+  btn.innerHTML = '<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Connecting…';
+  btn.disabled = true; lucide.createIcons();
+  setTimeout(function() { closeModal(); simulateConnection(); }, 1200);
+}
+
+/* ── Decline modals ────────────────────────────────────────── */
+function openDeclineModal() { document.getElementById('declineModal').classList.add('open'); }
+function closeDeclineModal() { document.getElementById('declineModal').classList.remove('open'); }
+function confirmDecline() {
+  closeDeclineModal();
+  showToast('Transfer declined', 'x-circle', 'red');
+  setTimeout(function() { goHome(); }, 800);
+}
+
+/* ══════════════════════════════════════════════════════════
+   NEW: KEYBOARD SHORTCUTS MODAL
+══════════════════════════════════════════════════════════ */
+function openKeyboardHelp() { document.getElementById('kbdModal').classList.add('open'); lucide.createIcons(); }
+function closeKeyboardHelp() { document.getElementById('kbdModal').classList.remove('open'); }
+
+/* ══════════════════════════════════════════════════════════
+   NEW: SETTINGS MODAL
+══════════════════════════════════════════════════════════ */
+function openSettings() { document.getElementById('settingsModal').classList.add('open'); lucide.createIcons(); }
+function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
+function saveSettings() {
+  closeSettings();
+  showToast('Settings saved', 'check-circle', 'green');
+}
+function switchSettingsTab(tab, btn) {
+  ['settingsGeneral','settingsTransfer','settingsPrivacy'].forEach(function(id) {
+    document.getElementById(id).classList.add('hidden');
+  });
+  document.getElementById('settings' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
+  document.querySelectorAll('.settings-tab').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+function updateBwLabel(slider) {
+  var labels = ['Unlimited','10 MB/s','25 MB/s','50 MB/s','100 MB/s','200 MB/s'];
+  document.getElementById('bwLabel').textContent = labels[parseInt(slider.value)] || 'Unlimited';
+}
+function clearHistory() {
+  _transferHistory = [];
+  populateHistoryList();
+  closeSettings();
+  showToast('Transfer history cleared', 'check-circle', 'green');
+}
+
+/* ══════════════════════════════════════════════════════════
+   NEW: TRANSFER HISTORY DRAWER
+══════════════════════════════════════════════════════════ */
+
+/* Seed demo history entries */
+var _transferHistory = [
+  { dir:'received', device:'iPhone 15', files:4, size:'2.63 GB', date:'Today, 2:14 PM', duration:'2m 14s', ok:true },
+  { dir:'sent',     device:'MacBook Air',files:2, size:'420 MB',  date:'Yesterday, 9:05 AM', duration:'48s',   ok:true },
+  { dir:'received', device:'iPad Pro',  files:7, size:'1.1 GB',  date:'Jun 10, 11:32 AM', duration:'1m 03s', ok:true },
+  { dir:'sent',     device:'iPhone 14', files:1, size:'87 MB',   date:'Jun 8, 6:48 PM',  duration:'12s',    ok:true },
+  { dir:'received', device:'Galaxy S24',files:3, size:'340 MB',  date:'Jun 5, 3:20 PM',  duration:'34s',    ok:false },
+];
+
+function openHistory() {
+  document.getElementById('historyBackdrop').classList.add('open');
+  document.getElementById('historyDrawer').classList.add('open');
+  populateHistoryList();
+  lucide.createIcons();
+}
+function closeHistory() {
+  document.getElementById('historyBackdrop').classList.remove('open');
+  document.getElementById('historyDrawer').classList.remove('open');
+}
+function viewHistory() { openHistory(); }
+
+function populateHistoryList() {
+  var container = document.getElementById('historyList');
+  if (!container) return;
+  if (_transferHistory.length === 0) {
+    container.innerHTML = '<div class="text-center py-12"><i data-lucide="inbox" class="w-8 h-8 text-gray-300 mx-auto mb-3"></i><p class="text-sm text-gray-400">No transfers yet</p></div>';
+    lucide.createIcons(); return;
+  }
+  container.innerHTML = _transferHistory.map(function(h, i) {
+    var icon = h.dir === 'received' ? 'download' : 'upload';
+    var iconBg = h.dir === 'received' ? 'rgba(255,122,26,.1)' : 'rgba(59,130,246,.1)';
+    var iconColor = h.dir === 'received' ? '#FF7A1A' : '#3B82F6';
+    var statusDot = h.ok ? '#22C55E' : '#EF4444';
+    return '<div class="history-entry entry-anim px-3 py-3 mb-1 cursor-default" style="animation-delay:' + (i*0.05) + 's">' +
+      '<div class="flex items-start gap-3">' +
+        '<div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style="background:' + iconBg + '">' +
+          '<i data-lucide="' + icon + '" class="w-4 h-4" style="color:' + iconColor + '"></i>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="flex items-center gap-1.5 mb-0.5">' +
+            '<p class="text-sm text-gray-800 truncate" style="font-weight:600">' + escHtml(h.device) + '</p>' +
+            '<div class="w-1.5 h-1.5 rounded-full shrink-0" style="background:' + statusDot + '"></div>' +
+          '</div>' +
+          '<p class="text-xs text-gray-400">' + h.files + ' file' + (h.files>1?'s':'') + ' · ' + escHtml(h.size) + ' · ' + escHtml(h.duration) + '</p>' +
+          '<p class="text-xs text-gray-300 mt-0.5">' + escHtml(h.date) + '</p>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  lucide.createIcons();
+}
+
+/* Add current session to history */
+function addSessionToHistory(dir, device, files, size, duration) {
+  _transferHistory.unshift({ dir:dir, device:device, files:files, size:size,
+    date:'Just now', duration:duration, ok:true });
+}
+
+/* ══════════════════════════════════════════════════════════
+   NEW: DIAGNOSTICS PANEL
+══════════════════════════════════════════════════════════ */
+var _diagOpen = false;
+var _diagBytesTransferred = 0;
+function toggleDiagnostics() {
+  _diagOpen = !_diagOpen;
+  var panel = document.getElementById('diagPanel');
+  var chevron = document.getElementById('diagChevron');
+  if (panel) panel.classList.toggle('open', _diagOpen);
+  if (chevron) chevron.style.transform = _diagOpen ? 'rotate(180deg)' : '';
+  lucide.createIcons();
+}
+function updateDiagnostics(pct) {
+  var latEl = document.getElementById('diagLatency');
+  var plEl  = document.getElementById('diagPacketLoss');
+  var fillEl = document.getElementById('diagFillBar');
+  var bytesEl = document.getElementById('diagBytes');
+  var totalBytes = 2.63 * 1024 * 1024 * 1024;
+  var transferred = totalBytes * (pct / 100);
+  if (latEl) latEl.textContent = (2 + Math.floor(Math.random() * 4));
+  if (plEl)  plEl.textContent  = (Math.random() * 0.2).toFixed(2);
+  if (fillEl) fillEl.style.width = pct.toFixed(1) + '%';
+  if (bytesEl) bytesEl.textContent = formatBytesShort(transferred) + ' / 2.63 GB';
+}
+function formatBytesShort(b) {
+  if (b < 1024*1024) return (b/1024).toFixed(0) + ' KB';
+  if (b < 1024*1024*1024) return (b/1024/1024).toFixed(1) + ' MB';
+  return (b/1024/1024/1024).toFixed(2) + ' GB';
+}
+
+/* ══════════════════════════════════════════════════════════
+   NEW: FILE DESELECT on Screen 2
+══════════════════════════════════════════════════════════ */
+var _incomingFiles = [
+  { name:'Vacation.mp4',  size:2.4*1024*1024*1024 },
+  { name:'IMG_1032.jpg',  size:4.1*1024*1024 },
+  { name:'Resume.pdf',    size:750*1024 },
+  { name:'Music.zip',     size:230*1024*1024 },
+];
+var _fileSelected = [true, true, true, true];
+
+function toggleFileSelection(idx) {
+  _fileSelected[idx] = !_fileSelected[idx];
+  var row = document.querySelectorAll('.file-deselect-row')[idx];
+  var selBox = document.getElementById('sel'+idx);
+  if (!row || !selBox) return;
+  row.classList.toggle('deselected', !_fileSelected[idx]);
+  if (_fileSelected[idx]) {
+    selBox.style.borderColor = '#FF7A1A'; selBox.style.background = '#FF7A1A';
+    selBox.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-white"></i>';
+  } else {
+    selBox.style.borderColor = '#D5CFC8'; selBox.style.background = 'transparent';
+    selBox.innerHTML = '';
+  }
+  lucide.createIcons();
+  updateIncomingSummary();
+}
+
+function updateIncomingSummary() {
+  var count = _fileSelected.filter(Boolean).length;
+  var totalBytes = _incomingFiles.reduce(function(s,f,i) { return s + (_fileSelected[i] ? f.size : 0); }, 0);
+  var badge = document.getElementById('selectedBadge');
+  var sizeLabel = document.getElementById('selectedSizeLabel');
+  var countLabel = document.getElementById('incomingCountLabel');
+  var footCount = document.getElementById('s2CountFoot');
+  var footSize = document.getElementById('s2SizeFoot');
+  if (badge) badge.textContent = count + ' selected';
+  var sizeStr = totalBytes < 1024*1024*1024 ? (totalBytes/1024/1024).toFixed(0)+' MB' : (totalBytes/1024/1024/1024).toFixed(2)+' GB';
+  if (sizeLabel) sizeLabel.textContent = sizeStr + ' total';
+  if (countLabel) countLabel.textContent = count;
+  if (footCount) footCount.textContent = count;
+  if (footSize) footSize.textContent = sizeStr;
+  var acceptBtn = document.getElementById('acceptBtn');
+  var folderSelected = !document.getElementById('folderSelected').classList.contains('hidden');
+  if (acceptBtn) acceptBtn.disabled = !(folderSelected && count > 0);
+}
+
+/* ── Flow ──────────────────────────────────────────────────── */
+function simulateConnection() {
+  if (_qrInterval) { clearInterval(_qrInterval); _qrInterval = null; }
+  showScreen('screen1b');
+  setTimeout(function() { showScreen('screen2'); }, 2200);
+}
+
+function chooseFolder() {
+  var btn = document.getElementById('chooseFolderBtn');
+  btn.innerHTML = '<i data-lucide="loader-circle" class="w-3.5 h-3.5 animate-spin"></i>Opening…';
+  btn.disabled = true; lucide.createIcons();
+  setTimeout(function() {
+    document.getElementById('folderCard').classList.add('hidden');
+    document.getElementById('folderSelected').classList.remove('hidden');
+    var count = _fileSelected.filter(Boolean).length;
+    var acceptBtn = document.getElementById('acceptBtn');
+    if (acceptBtn && count > 0) { acceptBtn.disabled = false; }
+    document.getElementById('acceptTooltip').style.display = 'none';
+    lucide.createIcons();
+    showToast('Folder selected: Downloads/DropIt', 'check-circle', 'green');
+  }, 800);
+}
+
+function changeFolder() {
+  document.getElementById('folderSelected').classList.add('hidden');
+  document.getElementById('folderCard').classList.remove('hidden');
+  var btn = document.getElementById('chooseFolderBtn');
+  if (btn) { btn.innerHTML = '<i data-lucide="folder-open" class="w-3.5 h-3.5"></i>Choose Folder'; btn.disabled = false; }
+  document.getElementById('acceptBtn').disabled = true;
+  document.getElementById('acceptTooltip').style.display = '';
+  lucide.createIcons();
+}
+
+function goToApproval() {
+  // Update approval screen with selected file count
+  var count = _fileSelected.filter(Boolean).length;
+  var s3count = document.getElementById('s3FileCount');
+  var s3badge = document.getElementById('s3Badge');
+  if (s3count) s3count.textContent = count;
+  if (s3badge) s3badge.textContent = count + ' items';
+  showScreen('screen3');
+}
+
+function acceptTransfer() {
+  showScreen('screen4');
+  _transferStartWall = Date.now();
+  setTimeout(startTransfer, 120);
+}
+
+function confirmCancelTransfer() {
+  if (!confirm('Cancel the active transfer? Files received so far will remain.')) return;
+  if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+  showToast('Transfer cancelled', 'x-circle', 'red');
+  setTimeout(function() { goHome(); }, 600);
+}
+
+/* ── Pause / Resume ────────────────────────────────────────── */
+var _paused = false, _pauseStart = 0, _totalPausedMs = 0;
+function togglePause() {
+  _paused = !_paused;
+  var btn = document.getElementById('pauseBtn');
+  var banner = document.getElementById('pausedBanner');
+  var badge = document.getElementById('transferStatusBadge');
+  if (_paused) {
+    _pauseStart = performance.now();
+    if (btn) { btn.setAttribute('aria-label','Resume transfer'); btn.innerHTML = '<i data-lucide="play" class="w-4 h-4 text-orange-500"></i>'; }
+    if (banner) banner.classList.add('visible');
+    if (badge) { badge.innerHTML = '<i data-lucide="pause-circle" class="w-3 h-3 text-amber-500"></i><span class="text-xs text-amber-700" style="font-weight:500">Paused</span>'; badge.style.background='rgba(245,158,11,.08)'; badge.style.border='1px solid rgba(245,158,11,.2)'; }
+    showToast('Transfer paused', 'pause-circle', 'orange');
+  } else {
+    if (_pauseStart) { _totalPausedMs += performance.now() - _pauseStart; _pauseStart = 0; }
+    if (btn) { btn.setAttribute('aria-label','Pause transfer'); btn.innerHTML = '<i data-lucide="pause" class="w-4 h-4 text-gray-500"></i>'; }
+    if (banner) banner.classList.remove('visible');
+    if (badge) { badge.innerHTML = '<i data-lucide="loader-circle" class="w-3 h-3 text-orange-500 animate-spin"></i><span class="text-xs text-orange-700" style="font-weight:500">Transferring</span>'; badge.style.background='rgba(255,122,26,.08)'; badge.style.border='1px solid rgba(255,122,26,.2)'; }
+    showToast('Transfer resumed', 'play-circle', 'green');
+  }
+  lucide.createIcons();
+}
+
+/* ── Keyboard shortcuts ────────────────────────────────────── */
+function bindKeyboard() {
+  document.addEventListener('keydown', function(e) {
+    var active = document.querySelector('.screen.active');
+    var id = active ? active.id : '';
+    // ? → keyboard help (any screen)
+    if (e.key === '?' && !e.target.tagName.match(/INPUT|TEXTAREA/i)) { e.preventDefault(); openKeyboardHelp(); return; }
+    // ⌘, → settings
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); return; }
+    // ⌘H → history
+    if ((e.metaKey || e.ctrlKey) && e.key === 'h') { e.preventDefault(); openHistory(); return; }
+    // ⌘K → modal on screen1
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k' && id === 'screen1') { e.preventDefault(); openModal(); }
+    // ⌘C → copy code on screen1
+    if ((e.metaKey || e.ctrlKey) && e.key === 'c' && id === 'screen1' && !window.getSelection().toString()) { copyCode(); }
+    // Enter on approval → accept
+    if (e.key === 'Enter' && id === 'screen3' && !e.target.tagName.match(/INPUT|BUTTON/i)) { acceptTransfer(); }
+    // Space → pause on screen4
+    if (e.key === ' ' && id === 'screen4' && e.target === document.body) { e.preventDefault(); togglePause(); }
+    // Escape → cancel transfer or close modals
+    if (e.key === 'Escape') {
+      closeModal(); closeDeclineModal(); closeKeyboardHelp(); closeSettings(); closeHistory();
+      if (id === 'screen4') { confirmCancelTransfer(); }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TRANSFER SIMULATION
+══════════════════════════════════════════════════════════════ */
+var FILES = [
+  { name:'Vacation.mp4',  size:'2.4 GB', icon:'video',        color:'#EF4444', bg:'rgba(239,68,68,.1)',  dur:12000, spd:'43.2' },
+  { name:'IMG_1032.jpg',  size:'4.1 MB', icon:'image',        color:'#3B82F6', bg:'rgba(59,130,246,.1)', dur:4000,  spd:'48.7' },
+  { name:'Resume.pdf',    size:'750 KB', icon:'file',         color:'#EF4444', bg:'rgba(239,68,68,.1)',  dur:2500,  spd:'52.1' },
+  { name:'Music.zip',     size:'230 MB', icon:'file-archive', color:'#A855F7', bg:'rgba(168,85,247,.1)', dur:7000,  spd:'44.6' },
+];
+var STAGGER = 1200;
+var _raf = null, _startTimes = [], _phases = [], _vfyStart = [], _transferStartWall = 0, _speedHistory = [];
+
+function startTransfer() {
+  if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+  _paused = false; _totalPausedMs = 0; _pauseStart = 0;
+  _startTimes = []; _phases = []; _vfyStart = []; _speedHistory = [];
+  _diagOpen = false;
+  var panel = document.getElementById('diagPanel'); if (panel) panel.classList.remove('open');
+  var now = performance.now();
+  for (var i = 0; i < FILES.length; i++) { _startTimes.push(now + i * STAGGER); _phases.push('queued'); _vfyStart.push(0); }
+  var container = document.getElementById('fileProgressItems');
+  container.innerHTML = '';
+  for (var j = 0; j < FILES.length; j++) container.insertAdjacentHTML('beforeend', makeFileRow(FILES[j], j));
+  lucide.createIcons();
+  _raf = requestAnimationFrame(tick);
+}
+
+function makeFileRow(f, i) {
+  return '<div id="row'+i+'" class="file-row px-5 py-4 transition-all duration-500">' +
+    '<div class="flex items-center gap-4 mb-3">' +
+      '<div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:'+f.bg+'">' +
+        '<i data-lucide="'+f.icon+'" class="w-4 h-4" style="color:'+f.color+'"></i>' +
+      '</div>' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          '<p class="text-sm text-gray-800 truncate" style="font-weight:500">'+f.name+'</p>' +
+          '<span id="badge'+i+'" class="px-2 py-0.5 rounded-full text-xs shrink-0" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Queued</span>' +
+        '</div>' +
+        '<div class="flex items-center justify-between gap-2 mt-0.5">' +
+          '<span class="text-xs text-gray-400">'+f.size+'</span>' +
+          '<span id="pct'+i+'" class="text-xs text-gray-400" style="font-family:JetBrains Mono,monospace">0%</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="pbar" style="margin-left:52px"><div id="fill'+i+'" class="pbar-fill" style="width:0%"></div></div>' +
+    '<div id="spd'+i+'" class="text-xs text-gray-400 mt-1.5" style="margin-left:52px;min-height:16px"></div>' +
+  '</div>';
+}
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+
+function tick(now) {
+  if (_paused) { _raf = requestAnimationFrame(tick); return; }
+  var doneCount = 0, totalPct = 0;
+  for (var i = 0; i < FILES.length; i++) {
+    var f = FILES[i], phase = _phases[i], start = _startTimes[i];
+    if (phase === 'done') { totalPct += 100; doneCount++; continue; }
+    if (now < start) { setFileUI(i, 0, 'queued', ''); continue; }
+    var elapsed = now - start - _totalPausedMs;
+    var rawT = Math.min(1, elapsed / f.dur);
+    var pct  = easeInOut(rawT) * 100;
+    if (pct > 0 && phase === 'queued') { _phases[i] = 'receiving'; phase = 'receiving'; }
+    if (pct >= 92 && phase === 'receiving') { _phases[i] = 'verifying'; _vfyStart[i] = now; phase = 'verifying'; }
+    if (phase === 'verifying') {
+      var vPct = 92 + ((now - _vfyStart[i]) / 800) * 8;
+      if (vPct >= 100) {
+        _phases[i] = 'done';
+        setFileUI(i, 100, 'done', 'Saved to Downloads/DropIt');
+        totalPct += 100; doneCount++;
+        collapseCompletedRow(i); continue;
+      }
+      setFileUI(i, vPct, 'verifying', f.spd + ' MB/s');
+      totalPct += vPct; continue;
+    }
+    var jitter = (Math.random() - 0.5) * 1.5;
+    setFileUI(i, pct, 'receiving', (parseFloat(f.spd) + jitter).toFixed(1) + ' MB/s');
+    totalPct += pct;
+  }
+  var overall = Math.round(totalPct / FILES.length);
+  var circ = 351.9;
+  var ring = document.getElementById('overallRing');
+  var pctEl = document.getElementById('overallPct');
+  if (ring) { ring.style.strokeDashoffset = (circ - circ * overall / 100).toFixed(1); ring.style.stroke = doneCount === FILES.length ? '#22C55E' : '#FF7A1A'; }
+  if (pctEl) pctEl.textContent = overall + '%';
+  var spd = (43 + Math.random() * 7).toFixed(1);
+  _speedHistory.push(parseFloat(spd));
+  if (_speedHistory.length > 20) _speedHistory.shift();
+  drawSparkline();
+  updateDiagnostics(overall); // NEW: keep diag panel in sync
+  var secs = doneCount < FILES.length ? Math.max(1, Math.round((100 - overall) / 100 * 20)) : 0;
+  var g = function(id) { return document.getElementById(id); };
+  if (g('statSpeed')) g('statSpeed').textContent = spd + ' MB/s';
+  if (g('statTime'))  g('statTime').textContent  = secs > 0 ? fmtTime(secs) : 'Done';
+  if (g('statFiles')) g('statFiles').textContent = doneCount + ' / ' + FILES.length;
+  if (doneCount === FILES.length) {
+    _raf = null;
+    var duration = Math.round((Date.now() - _transferStartWall) / 1000);
+    var fd = document.getElementById('finalDuration');
+    if (fd) fd.textContent = fmtTime(duration);
+    addSessionToHistory('received', 'iPhone 15', FILES.length, '2.63 GB', fmtTime(duration));
+    setTimeout(function() { showScreen('screen5'); }, 900);
+    return;
+  }
+  _raf = requestAnimationFrame(tick);
+}
+
+function collapseCompletedRow(i) {
+  var row = document.getElementById('row'+i);
+  if (!row) return;
+  setTimeout(function() {
+    row.style.maxHeight = row.scrollHeight + 'px';
+    row.style.overflow = 'hidden';
+    row.style.transition = 'max-height .5s cubic-bezier(.4,0,.2,1), opacity .4s';
+    setTimeout(function() {
+      row.style.maxHeight = '52px'; row.style.opacity = '0.7';
+      row.innerHTML = '<div class="flex items-center gap-3 px-5 py-3">' +
+        '<div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(34,197,94,.1)">' +
+          '<i data-lucide="check" class="w-3.5 h-3.5 text-green-500"></i>' +
+        '</div>' +
+        '<p class="text-sm text-gray-600 flex-1 truncate" style="font-weight:500">'+FILES[i].name+'</p>' +
+        '<span class="text-xs text-green-600" style="font-weight:500">Saved ✓</span>' +
+      '</div>';
+      row.style.opacity = '1'; row.style.maxHeight = '52px';
+      lucide.createIcons();
+    }, 200);
+  }, 400);
+}
+
+function setFileUI(i, pct, phase, spdText) {
+  var fill = document.getElementById('fill'+i);
+  var pctEl = document.getElementById('pct'+i);
+  var badge = document.getElementById('badge'+i);
+  var spd   = document.getElementById('spd'+i);
+  if (!fill) return;
+  fill.style.width = pct.toFixed(1) + '%';
+  fill.className = 'pbar-fill' + (phase==='verifying'?' vfy':phase==='done'?' done':phase==='paused'?' paused':'');
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  if (spd) spd.textContent = spdText;
+  if (!badge) return;
+  var styles = {
+    queued:    { label:'Queued',    bg:'rgba(107,114,128,.1)', color:'#6B7280' },
+    receiving: { label:'Receiving', bg:'rgba(255,122,26,.1)',  color:'#C05000' },
+    verifying: { label:'Verifying', bg:'rgba(168,85,247,.1)',  color:'#7C3AED' },
+    done:      { label:'Saved ✓',   bg:'rgba(34,197,94,.1)',   color:'#15803D' },
+    paused:    { label:'Paused',    bg:'rgba(245,158,11,.1)',  color:'#92400E' },
+  };
+  var s = styles[phase] || styles.queued;
+  badge.textContent = s.label; badge.style.background = s.bg; badge.style.color = s.color;
+}
+
+function drawSparkline() {
+  var c = document.getElementById('sparkCanvas');
+  if (!c || _speedHistory.length < 2) return;
+  var ctx = c.getContext('2d'); var w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  var min = Math.min.apply(null, _speedHistory), max = Math.max.apply(null, _speedHistory);
+  var range = max - min || 1;
+  ctx.beginPath(); ctx.strokeStyle = '#FF7A1A'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+  for (var i = 0; i < _speedHistory.length; i++) {
+    var x = (i / (_speedHistory.length - 1)) * w;
+    var y = h - (((_speedHistory[i] - min) / range) * (h - 4) + 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function fmtTime(s) { return s < 60 ? s + 's' : Math.floor(s/60) + 'm ' + (s%60) + 's'; }
+
+/* ── Screen 5 actions ──────────────────────────────────────── */
+function openFolder() { showToast('Opening Downloads/DropIt…', 'folder-open', 'orange'); }
+function goHome() {
+  if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+  stopSignalAnimation();
+  resetScreen2();
+  showScreen('screen1');
+  startQRCountdown();
+}
+function receiveMore() {
+  if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+  resetScreen2();
+  showScreen('screen2');
+}
+function resetScreen2() {
+  document.getElementById('folderCard').classList.remove('hidden');
+  document.getElementById('folderSelected').classList.add('hidden');
+  document.getElementById('acceptBtn').disabled = true;
+  document.getElementById('acceptTooltip').style.display = '';
+  var btn = document.getElementById('chooseFolderBtn');
+  if (btn) { btn.innerHTML = '<i data-lucide="folder-open" class="w-3.5 h-3.5"></i>Choose Folder'; btn.disabled = false; }
+  var pb = document.getElementById('pausedBanner');
+  if (pb) pb.classList.remove('visible');
+  _paused = false; _totalPausedMs = 0;
+  // Reset file selections
+  _fileSelected = [true, true, true, true];
+  for (var i = 0; i < 4; i++) {
+    var row = document.querySelectorAll('.file-deselect-row')[i];
+    var selBox = document.getElementById('sel'+i);
+    if (row) row.classList.remove('deselected');
+    if (selBox) {
+      selBox.style.borderColor = '#FF7A1A'; selBox.style.background = '#FF7A1A';
+      selBox.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-white"></i>';
+    }
+  }
+  updateIncomingSummary();
+  lucide.createIcons();
+}
+
+/* ── Toast ─────────────────────────────────────────────────── */
+function showToast(msg, icon, color) {
+  var map = {
+    green:  { bg:'#F0FDF4', border:'#BBF7D0', text:'#15803D', ic:'#22C55E' },
+    orange: { bg:'#FFF7ED', border:'#FED7AA', text:'#C2410C', ic:'#F97316' },
+    red:    { bg:'#FEF2F2', border:'#FECACA', text:'#DC2626', ic:'#EF4444' },
+  };
+  var c = map[color] || map.green;
+  var t = document.createElement('div');
+  t.className = 'toast flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg';
+  t.style.cssText = 'background:'+c.bg+';border-color:'+c.border+';min-width:220px';
+  t.innerHTML = '<i data-lucide="'+icon+'" class="w-4 h-4 shrink-0" style="color:'+c.ic+'"></i>' +
+                '<span class="text-sm" style="font-weight:500;color:'+c.text+'">'+msg+'</span>';
+  document.getElementById('toastContainer').appendChild(t);
+  lucide.createIcons();
+  setTimeout(function() { t.classList.add('out'); setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   SEND FLOW
+══════════════════════════════════════════════════════════════ */
+var _sendFiles = [], _sendRaf = null, _sendPaused = false;
+var _sendStartTimes = [], _sendPhases = [], _sendVfyStart = [];
+var _sendStartWall = 0, _sendTotalPausedMs = 0, _sendPauseStart = 0;
+var _dragSrcIdx = null;
+
+/* ── Mode toggle ────────────────────────────────────────────── */
+function setMode(mode) {
+  var r = document.getElementById('modeReceive'), s = document.getElementById('modeSend');
+  if (mode === 'receive') { r.classList.add('active'); s.classList.remove('active'); showScreen('screen1'); }
+  else { s.classList.add('active'); r.classList.remove('active'); showScreen('screenS1'); }
+}
+function goToReceiveMode() { setMode('receive'); }
+
+/* ── File utilities ─────────────────────────────────────────── */
+function getFileIcon(name) {
+  var ext = name.split('.').pop().toLowerCase();
+  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return { icon:'video', color:'#EF4444', bg:'rgba(239,68,68,.1)' };
+  if (['jpg','jpeg','png','gif','webp','heic','svg'].includes(ext)) return { icon:'image', color:'#3B82F6', bg:'rgba(59,130,246,.1)' };
+  if (['mp3','wav','aac','flac','m4a','ogg'].includes(ext)) return { icon:'music', color:'#A855F7', bg:'rgba(168,85,247,.1)' };
+  if (['zip','rar','tar','gz','7z'].includes(ext)) return { icon:'file-archive', color:'#A855F7', bg:'rgba(168,85,247,.1)' };
+  if (ext === 'pdf') return { icon:'file-text', color:'#EF4444', bg:'rgba(239,68,68,.1)' };
+  if (['doc','docx'].includes(ext)) return { icon:'file-text', color:'#3B82F6', bg:'rgba(59,130,246,.1)' };
+  if (['xls','xlsx','csv'].includes(ext)) return { icon:'file-spreadsheet', color:'#22C55E', bg:'rgba(34,197,94,.1)' };
+  return { icon:'file', color:'#6B7280', bg:'rgba(107,114,128,.1)' };
+}
+function formatFileSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1024*1024*1024) return (b/1024/1024).toFixed(1) + ' MB';
+  return (b/1024/1024/1024).toFixed(2) + ' GB';
+}
+function getTotalSize(files) { return files.reduce(function(s,f) { return s+(f.file?f.file.size:0); }, 0); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ── File input handlers ────────────────────────────────────── */
+function handleFileInput(input) {
+  if (!input.files.length) return;
+  addFilesToList(Array.from(input.files));
+  input.value = '';
+}
+function addFilesToList(newFiles) {
+  newFiles.forEach(function(file) {
+    var meta = getFileIcon(file.name);
+    _sendFiles.push({ file:file, name:file.name, size:formatFileSize(file.size), sizeRaw:file.size,
+      icon:meta.icon, color:meta.color, bg:meta.bg,
+      dur:Math.max(2000, Math.min(14000, file.size / 200000)),
+      spd:(40 + Math.random() * 15).toFixed(1) });
+  });
+  renderFileChips();
+  updateSendSummary();
+}
+function removeFile(idx) { _sendFiles.splice(idx, 1); renderFileChips(); updateSendSummary(); }
+function clearAllFiles() { _sendFiles = []; renderFileChips(); updateSendSummary(); }
+
+/* ── NEW: Drag-to-reorder chip rendering ─────────────────────── */
+function renderFileChips() {
+  var dz = document.getElementById('dropZone');
+  var empty = document.getElementById('dropZoneEmpty');
+  var filesDiv = document.getElementById('dropZoneFiles');
+  var addMore = document.getElementById('addMoreZone');
+  var reorderHint = document.getElementById('reorderHint');
+  var summary = document.getElementById('sendSummaryBar');
+  var nextBtn = document.getElementById('sendNextBtn');
+  var nextTip = document.getElementById('sendNextTooltip');
+
+  if (_sendFiles.length === 0) {
+    empty.classList.remove('hidden'); filesDiv.classList.add('hidden');
+    dz.classList.remove('has-files'); addMore.classList.add('hidden');
+    if (reorderHint) reorderHint.classList.add('hidden');
+    summary.classList.add('hidden'); nextBtn.disabled = true; nextTip.style.display = '';
+    return;
+  }
+  empty.classList.add('hidden'); filesDiv.classList.remove('hidden');
+  dz.classList.add('has-files'); addMore.classList.remove('hidden');
+  if (reorderHint) reorderHint.classList.remove('hidden');
+  summary.classList.remove('hidden'); nextBtn.disabled = false; nextTip.style.display = 'none';
+
+  filesDiv.innerHTML = '<div class="space-y-2" id="chipContainer">' +
+    _sendFiles.map(function(f, i) {
+      return '<div class="file-chip chip-anim" draggable="true" data-idx="'+i+'"' +
+        ' ondragstart="chipDragStart(event,'+i+')" ondragover="chipDragOver(event,'+i+')"' +
+        ' ondragleave="chipDragLeave(event)" ondrop="chipDrop(event,'+i+')"' +
+        ' style="animation-delay:' + (i * 0.04) + 's;cursor:grab">' +
+        '<div class="w-5 h-8 flex items-center justify-center cursor-grab shrink-0" style="color:#D5CFC8" title="Drag to reorder">' +
+          '<i data-lucide="grip-vertical" class="w-4 h-4"></i>' +
+        '</div>' +
+        '<div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:' + f.bg + '">' +
+          '<i data-lucide="' + f.icon + '" class="w-3.5 h-3.5" style="color:' + f.color + '"></i>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="text-sm text-gray-800 truncate" style="font-weight:500">' + escHtml(f.name) + '</p>' +
+          '<p class="text-xs text-gray-400">' + f.size + '</p>' +
+        '</div>' +
+        '<button onclick="event.stopPropagation();removeFile(' + i + ')" class="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-50 transition-colors shrink-0" aria-label="Remove">' +
+          '<i data-lucide="x" class="w-3 h-3 text-gray-400 hover:text-red-400"></i>' +
+        '</button>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+  lucide.createIcons();
+}
+
+/* ── Drag-and-drop reorder ──────────────────────────────────── */
+function chipDragStart(e, idx) { _dragSrcIdx = idx; e.currentTarget.classList.add('dragging'); }
+function chipDragOver(e, idx) {
+  e.preventDefault(); e.stopPropagation();
+  document.querySelectorAll('.file-chip').forEach(function(c) { c.classList.remove('drag-over-chip'); });
+  if (idx !== _dragSrcIdx) e.currentTarget.classList.add('drag-over-chip');
+}
+function chipDragLeave(e) { e.currentTarget.classList.remove('drag-over-chip'); }
+function chipDrop(e, toIdx) {
+  e.preventDefault();
+  document.querySelectorAll('.file-chip').forEach(function(c) { c.classList.remove('drag-over-chip', 'dragging'); });
+  if (_dragSrcIdx === null || _dragSrcIdx === toIdx) return;
+  var moved = _sendFiles.splice(_dragSrcIdx, 1)[0];
+  _sendFiles.splice(toIdx, 0, moved);
+  _dragSrcIdx = null;
+  renderFileChips();
+  updateSendSummary();
+}
+
+function updateSendSummary() {
+  var count = document.getElementById('sendFileCount');
+  var size  = document.getElementById('sendTotalSize');
+  if (count) count.textContent = _sendFiles.length;
+  if (size)  size.textContent  = formatFileSize(getTotalSize(_sendFiles));
+}
+
+/* ── Drag & drop onto dropzone ──────────────────────────────── */
+function handleDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+function handleDragLeave(e) { document.getElementById('dropZone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault(); document.getElementById('dropZone').classList.remove('drag-over');
+  var files = Array.from(e.dataTransfer.files);
+  if (files.length) addFilesToList(files);
+}
+
+/* ── Navigation ─────────────────────────────────────────────── */
+function goToSendConnect() {
+  var s2count = document.getElementById('s2FileCount');
+  var s2size  = document.getElementById('s2TotalSize');
+  if (s2count) s2count.textContent = _sendFiles.length;
+  if (s2size)  s2size.textContent  = formatFileSize(getTotalSize(_sendFiles));
+  showScreen('screenS2');
+}
+
+/* ── Send connect ───────────────────────────────────────────── */
+function handleSendCodeInput(el, nextId) {
+  el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (el.value.length >= 4 && nextId) document.getElementById(nextId).focus();
+}
+function copySendCode() {
+  try { navigator.clipboard.writeText('B3F7-18QX'); } catch(e) {}
+  showToast('Your code copied', 'check-circle', 'green');
+}
+
+function connectToReceiver() {
+  var a = document.getElementById('recvCodeA').value.trim();
+  var b = document.getElementById('recvCodeB').value.trim();
+  document.getElementById('sendConnectError').classList.add('hidden');
+  if (a.length < 4 || b.length < 4) {
+    document.getElementById('sendConnectError').classList.remove('hidden');
+    if (a.length < 4) document.getElementById('recvCodeA').classList.add('error');
+    if (b.length < 4) document.getElementById('recvCodeB').classList.add('error');
+    return;
+  }
+
+  const connectionRequest = async ( ) =>{
+    
+  }
+  var btn = document.getElementById('sendConnectBtn');
+  btn.innerHTML = '<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Connecting…';
+  btn.disabled = true; lucide.createIcons();
+  showScreen('screenS3');
+  var ring = document.getElementById('connectingRing'), progress = 0;
+  var ringInt = setInterval(function() {
+    progress = Math.min(100, progress + 8);
+    if (ring) ring.style.strokeDashoffset = (301.6 * (1 - progress/100)).toFixed(1);
+    if (progress >= 100) {
+      clearInterval(ringInt);
+      document.getElementById('connectingTitle').textContent = 'Connected!';
+      document.getElementById('connectingSubtitle').textContent = 'Receiver is ready — starting transfer…';
+      if (ring) ring.style.stroke = '#22C55E';
+      setTimeout(function() {
+        showScreen('screenS4');
+        _sendStartWall = Date.now();
+        startSendTransfer();
+      }, 700);
+    }
+  }, 120);
+}
+
+/* ── Send transfer simulation ───────────────────────────────── */
+function startSendTransfer() {
+  if (_sendRaf) { cancelAnimationFrame(_sendRaf); _sendRaf = null; }
+  _sendPaused = false; _sendTotalPausedMs = 0; _sendPauseStart = 0;
+  _sendStartTimes = []; _sendPhases = []; _sendVfyStart = [];
+  var filesToUse = _sendFiles.length > 0 ? _sendFiles : [
+    { name:'Vacation.mp4', size:'2.4 GB', icon:'video', color:'#EF4444', bg:'rgba(239,68,68,.1)', dur:11000, spd:'43.2' },
+    { name:'IMG_1032.jpg', size:'4.1 MB', icon:'image', color:'#3B82F6', bg:'rgba(59,130,246,.1)', dur:3500,  spd:'49.1' },
+    { name:'Resume.pdf',   size:'750 KB', icon:'file',  color:'#EF4444', bg:'rgba(239,68,68,.1)', dur:2000,  spd:'51.8' },
+  ];
+  _sendFiles = filesToUse;
+  var now = performance.now();
+  for (var i = 0; i < _sendFiles.length; i++) { _sendStartTimes.push(now + i * 1200); _sendPhases.push('queued'); _sendVfyStart.push(0); }
+  var container = document.getElementById('sendFileProgressItems');
+  container.innerHTML = '';
+  for (var j = 0; j < _sendFiles.length; j++) container.insertAdjacentHTML('beforeend', makeSendFileRow(_sendFiles[j], j));
+  var sr = document.getElementById('sendStatFiles');
+  if (sr) sr.textContent = '0 / ' + _sendFiles.length;
+  lucide.createIcons();
+  _sendRaf = requestAnimationFrame(sendTick);
+  setTimeout(function() {
+    var banner = document.getElementById('addMoreBanner');
+    var addBtn = document.getElementById('addMoreDuringBtn');
+    if (banner) banner.classList.add('visible');
+    if (addBtn) addBtn.classList.remove('hidden');
+    lucide.createIcons();
+    showToast('Receiver wants more files', 'inbox', 'orange');
+  }, 6000);
+}
+
+function makeSendFileRow(f, i) {
+  return '<div id="srow'+i+'" class="file-row px-5 py-4 transition-all duration-500">' +
+    '<div class="flex items-center gap-4 mb-3">' +
+      '<div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:'+f.bg+'">' +
+        '<i data-lucide="'+f.icon+'" class="w-4 h-4" style="color:'+f.color+'"></i>' +
+      '</div>' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          '<p class="text-sm text-gray-800 truncate" style="font-weight:500">'+escHtml(f.name)+'</p>' +
+          '<span id="sbadge'+i+'" class="px-2 py-0.5 rounded-full text-xs shrink-0" style="font-weight:500;background:rgba(107,114,128,.1);color:#6B7280">Queued</span>' +
+        '</div>' +
+        '<div class="flex items-center justify-between gap-2 mt-0.5">' +
+          '<span class="text-xs text-gray-400">'+escHtml(f.size)+'</span>' +
+          '<span id="spct'+i+'" class="text-xs text-gray-400" style="font-family:JetBrains Mono,monospace">0%</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="pbar" style="margin-left:52px"><div id="sfill'+i+'" class="pbar-fill" style="width:0%"></div></div>' +
+    '<div id="sspd'+i+'" class="text-xs text-gray-400 mt-1.5" style="margin-left:52px;min-height:16px"></div>' +
+  '</div>';
+}
+
+function sendTick(now) {
+  if (_sendPaused) { _sendRaf = requestAnimationFrame(sendTick); return; }
+  var doneCount = 0, totalPct = 0, files = _sendFiles;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i], phase = _sendPhases[i], start = _sendStartTimes[i];
+    if (phase === 'done') { totalPct += 100; doneCount++; continue; }
+    if (now < start) { setSendFileUI(i, 0, 'queued', ''); continue; }
+    var elapsed = now - start - _sendTotalPausedMs;
+    var rawT = Math.min(1, elapsed / f.dur);
+    var pct = easeInOut(rawT) * 100;
+    if (pct > 0 && phase === 'queued') { _sendPhases[i] = 'sending'; phase = 'sending'; }
+    if (pct >= 92 && phase === 'sending') { _sendPhases[i] = 'verifying'; _sendVfyStart[i] = now; phase = 'verifying'; }
+    if (phase === 'verifying') {
+      var vPct = 92 + ((now - _sendVfyStart[i]) / 700) * 8;
+      if (vPct >= 100) {
+        _sendPhases[i] = 'done'; setSendFileUI(i, 100, 'done', 'Delivered');
+        totalPct += 100; doneCount++; collapseSentRow(i); continue;
+      }
+      setSendFileUI(i, vPct, 'verifying', f.spd + ' MB/s');
+      totalPct += vPct; continue;
+    }
+    var jitter = (Math.random() - 0.5) * 1.5;
+    setSendFileUI(i, pct, 'sending', (parseFloat(f.spd) + jitter).toFixed(1) + ' MB/s');
+    totalPct += pct;
+  }
+  var overall = Math.round(totalPct / files.length);
+  var circ = 351.9;
+  var ring = document.getElementById('sendOverallRing');
+  var pctEl = document.getElementById('sendOverallPct');
+  if (ring) { ring.style.strokeDashoffset = (circ - circ * overall / 100).toFixed(1); ring.style.stroke = doneCount === files.length ? '#22C55E' : '#FF7A1A'; }
+  if (pctEl) pctEl.textContent = overall + '%';
+  var spd = (43 + Math.random() * 7).toFixed(1);
+  var secs = doneCount < files.length ? Math.max(1, Math.round((100 - overall) / 100 * 20)) : 0;
+  var g = function(id) { return document.getElementById(id); };
+  if (g('sendStatSpeed')) g('sendStatSpeed').textContent = spd + ' MB/s';
+  if (g('sendStatTime'))  g('sendStatTime').textContent  = secs > 0 ? fmtTime(secs) : 'Done';
+  if (g('sendStatFiles')) g('sendStatFiles').textContent = doneCount + ' / ' + files.length;
+  if (doneCount === files.length) {
+    _sendRaf = null;
+    var duration = Math.round((Date.now() - _sendStartWall) / 1000);
+    setTimeout(function() {
+      var fc = document.getElementById('sentFinalCount');
+      var fs = document.getElementById('sentFinalSize');
+      var fd = document.getElementById('sentFinalDuration');
+      if (fc) fc.textContent = files.length + ' file' + (files.length>1?'s':'');
+      if (fs) fs.textContent = formatFileSize(getTotalSize(files));
+      if (fd) fd.textContent = fmtTime(duration);
+      addSessionToHistory('sent', 'MacBook Pro', files.length, formatFileSize(getTotalSize(files)), fmtTime(duration));
+      showScreen('screenS5');
+      setTimeout(function() { var req = document.getElementById('sendMoreRequest'); if (req) { req.classList.remove('hidden'); lucide.createIcons(); } }, 3000);
+    }, 800);
+    return;
+  }
+  _sendRaf = requestAnimationFrame(sendTick);
+}
+
+function setSendFileUI(i, pct, phase, spdText) {
+  var fill = document.getElementById('sfill'+i);
+  var pctEl = document.getElementById('spct'+i);
+  var badge = document.getElementById('sbadge'+i);
+  var spd   = document.getElementById('sspd'+i);
+  if (!fill) return;
+  fill.style.width = pct.toFixed(1) + '%';
+  fill.className = 'pbar-fill' + (phase==='verifying'?' vfy':phase==='done'?' done':'');
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  if (spd) spd.textContent = spdText;
+  if (!badge) return;
+  var styles = {
+    queued:    { label:'Queued',    bg:'rgba(107,114,128,.1)', color:'#6B7280' },
+    sending:   { label:'Sending',   bg:'rgba(255,122,26,.1)',  color:'#C05000' },
+    verifying: { label:'Verifying', bg:'rgba(168,85,247,.1)',  color:'#7C3AED' },
+    done:      { label:'Delivered', bg:'rgba(34,197,94,.1)',   color:'#15803D' },
+  };
+  var s = styles[phase] || styles.queued;
+  badge.textContent = s.label; badge.style.background = s.bg; badge.style.color = s.color;
+}
+
+function collapseSentRow(i) {
+  var row = document.getElementById('srow'+i);
+  if (!row) return;
+  setTimeout(function() {
+    row.style.maxHeight = row.scrollHeight + 'px'; row.style.overflow = 'hidden';
+    row.style.transition = 'max-height .5s cubic-bezier(.4,0,.2,1)';
+    setTimeout(function() {
+      row.innerHTML = '<div class="flex items-center gap-3 px-5 py-3">' +
+        '<div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(255,122,26,.1)">' +
+          '<i data-lucide="check" class="w-3.5 h-3.5 text-orange-500"></i>' +
+        '</div>' +
+        '<p class="text-sm text-gray-600 flex-1 truncate" style="font-weight:500">'+escHtml(_sendFiles[i].name)+'</p>' +
+        '<span class="text-xs text-orange-600" style="font-weight:500">Delivered ✓</span>' +
+      '</div>';
+      row.style.maxHeight = '52px'; lucide.createIcons();
+    }, 200);
+  }, 400);
+}
+
+/* ── Pause send ─────────────────────────────────────────────── */
+function toggleSendPause() {
+  _sendPaused = !_sendPaused;
+  var btn = document.getElementById('sendPauseBtn');
+  var badge = document.getElementById('sendStatusBadge');
+  if (_sendPaused) {
+    _sendPauseStart = performance.now();
+    if (btn) btn.innerHTML = '<i data-lucide="play" class="w-4 h-4 text-orange-500"></i>';
+    if (badge) badge.innerHTML = '<i data-lucide="pause-circle" class="w-3 h-3 text-amber-500"></i><span class="text-xs text-amber-700" style="font-weight:500">Paused</span>';
+    showToast('Sending paused', 'pause-circle', 'orange');
+  } else {
+    if (_sendPauseStart) { _sendTotalPausedMs += performance.now() - _sendPauseStart; _sendPauseStart = 0; }
+    if (btn) btn.innerHTML = '<i data-lucide="pause" class="w-4 h-4 text-gray-500"></i>';
+    if (badge) badge.innerHTML = '<i data-lucide="loader-circle" class="w-3 h-3 text-orange-500 animate-spin"></i><span class="text-xs text-orange-700" style="font-weight:500">Sending</span>';
+    showToast('Sending resumed', 'play-circle', 'green');
+  }
+  lucide.createIcons();
+}
+
+/* ── Add more files ─────────────────────────────────────────── */
+function addMoreFiles() { document.getElementById('addMoreInput').click(); }
+function handleAddMoreInput(input) {
+  if (!input.files.length) return;
+  var newFiles = Array.from(input.files); input.value = '';
+  var prevLen = _sendFiles.length;
+  newFiles.forEach(function(file) {
+    var meta = getFileIcon(file.name);
+    _sendFiles.push({ file:file, name:file.name, size:formatFileSize(file.size), sizeRaw:file.size,
+      icon:meta.icon, color:meta.color, bg:meta.bg,
+      dur:Math.max(2000, Math.min(12000, file.size / 200000)),
+      spd:(40 + Math.random() * 15).toFixed(1) });
+  });
+  var now = performance.now();
+  for (var i = prevLen; i < _sendFiles.length; i++) { _sendStartTimes.push(now + (i-prevLen+1)*800); _sendPhases.push('queued'); _sendVfyStart.push(0); }
+  var container = document.getElementById('sendFileProgressItems');
+  for (var j = prevLen; j < _sendFiles.length; j++) container.insertAdjacentHTML('beforeend', makeSendFileRow(_sendFiles[j], j));
+  lucide.createIcons();
+  var banner = document.getElementById('addMoreBanner'); if (banner) banner.classList.remove('visible');
+  if (_sendPaused) toggleSendPause();
+  if (!_sendRaf) _sendRaf = requestAnimationFrame(sendTick);
+  showToast(newFiles.length + ' file' + (newFiles.length>1?'s':'') + ' added to queue', 'plus-circle', 'orange');
+}
+
+function sendMoreFromComplete() {
+  if (_sendRaf) { cancelAnimationFrame(_sendRaf); _sendRaf = null; }
+  _sendFiles = [];
+  renderFileChips(); updateSendSummary();
+  var ra = document.getElementById('recvCodeA'); var rb = document.getElementById('recvCodeB');
+  if (ra) ra.value = ''; if (rb) rb.value = '';
+  var sb = document.getElementById('sendConnectBtn');
+  if (sb) { sb.innerHTML = '<i data-lucide="link" class="w-4 h-4"></i>Connect &amp; Send'; sb.disabled = false; }
+  var sm = document.getElementById('sendMoreRequest'); if (sm) sm.classList.add('hidden');
+  lucide.createIcons();
+  showScreen('screenS1');
+}
+
+</script>
+</body>
+</html>

@@ -1,122 +1,705 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>DropIt WebRTC Test</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PeerDrop — P2P File Transfer</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Your WebRTC script -->
+    <script type="module" src="socket.js"></script>
+
+  <script>
+    /* ─────────────────────────────────────────────────────────────────────────
+       Tailwind Config
+       Extend the default theme with brand tokens and custom font families.
+       ───────────────────────────────────────────────────────────────────────── */
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50:  '#f0f4ff',
+              100: '#dde8ff',
+              200: '#c0d2ff',
+              400: '#6b8eff',
+              500: '#4c6ef5',
+              600: '#3451d1',
+              700: '#2540b0',
+              800: '#1a308a',
+              900: '#112060',
+            },
+            surface: '#0f1117',
+            panel:   '#161b27',
+            card:    '#1d2333',
+            border:  '#2a3045',
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s ease-in-out infinite',
+            'fade-in':    'fadeIn 0.25s ease forwards',
+          },
+          keyframes: {
+            fadeIn: { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+          },
+        }
+      }
+    }
+  </script>
+
   <style>
+    /* ─────────────────────────────────────────────────────────────────────────
+       Global base styles.
+       We use a dark, neutral background so the brand blue pops clearly and the
+       file transfer progress bars are easy to scan.
+       ───────────────────────────────────────────────────────────────────────── */
     body {
-      font-family: Arial, sans-serif;
-      background: #0f0f0f;
-      color: #fff;
-      padding: 20px;
+      background-color: #0f1117;
+      color: #e2e8f0;
     }
 
-    button {
-      padding: 10px 15px;
-      margin: 5px;
-      cursor: pointer;
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1d2333; }
+    ::-webkit-scrollbar-thumb { background: #2a3045; border-radius: 9px; }
+
+    /* ── File drag overlay glow ── */
+    .drop-zone.dragging { border-color: #4c6ef5 !important; background-color: rgba(76,110,245,0.08) !important; }
+
+    /* ── Progress bar animated fill ── */
+    .progress-fill { transition: width 0.3s ease; }
+
+    /* ── Page sections: controlled via JS class toggling ── */
+    .page { display: none; }
+    .page.active { display: block; animation: fadeIn 0.25s ease forwards; }
+
+    /* ── Status dot pulse ── */
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+    .dot-pulse { animation: dotPulse 2s ease-in-out infinite; }
+
+    /* ── Copy button flash ── */
+    @keyframes flashGreen {
+      0%,100% { background-color: transparent; }
+      50%      { background-color: rgba(34,197,94,0.15); }
+    }
+    .copy-flash { animation: flashGreen 0.6s ease; }
+
+    /* ── Input focus ring ── */
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #4c6ef5 !important;
+      box-shadow: 0 0 0 3px rgba(76,110,245,0.15);
     }
 
-    #user-name {
-      font-size: 20px;
-      margin-bottom: 10px;
-      color: #00ff99;
-    }
-
-    #answer {
-      margin-top: 20px;
-      padding: 10px;
-      border: 1px solid #333;
-      min-height: 50px;
-    }
-
-    #log {
-      margin-top: 20px;
-      background: #111;
-      padding: 10px;
-      height: 200px;
-      overflow: auto;
-      font-size: 12px;
-    }
-
-    input {
-      padding: 8px;
-      margin: 5px 0;
-    }
-        /* FILE LIST UI */
-    #fileList {
-      margin-top: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .file-item {
-      background: #1a1a1a;
-      padding: 10px;
-      border: 1px solid #333;
-      border-radius: 6px;
-    }
-
-    .file-name {
-      font-size: 14px;
-      margin-bottom: 5px;
-      color: #00ffcc;
-    }
-
-    .progress-row {
-      display: flex;
+    /* ── Button base ── */
+    .btn {
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: none;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #4c6ef5; color: white; }
+    .btn-primary:hover { background: #3451d1; }
+    .btn-primary:disabled { background: #2a3045; color: #64748b; cursor: not-allowed; }
+    .btn-secondary { background: #1d2333; color: #cbd5e1; border: 1px solid #2a3045; }
+    .btn-secondary:hover { background: #232b3e; border-color: #3a4560; }
+    .btn-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .btn-ghost { background: transparent; color: #94a3b8; padding: 8px 12px; }
+    .btn-ghost:hover { color: #e2e8f0; background: #1d2333; }
+
+    /* ── Card / Panel ── */
+    .card {
+      background: #1d2333;
+      border: 1px solid #2a3045;
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-blue { background: rgba(76,110,245,0.15); color: #6b8eff; }
+    .badge-green { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .badge-red { background: rgba(239,68,68,0.12); color: #f87171; }
+    .badge-gray { background: #1d2333; color: #64748b; border: 1px solid #2a3045; }
+    .badge-yellow { background: rgba(234,179,8,0.12); color: #facc15; }
+
+    /* ── File row ── */
+    .file-row {
+      background: #161b27;
+      border: 1px solid #2a3045;
+      border-radius: 12px;
+      padding: 14px 16px;
     }
   </style>
 </head>
 
-<body>
+<body class="min-h-screen font-sans antialiased">
 
-  <div id="user-name">Loading...</div>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       NAVBAR
+       Fixed top bar with brand name, connection status indicator, and a
+       "Leave room" button that only appears once the user is in a room.
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <nav class="fixed top-0 inset-x-0 z-50 border-b border-[#2a3045] bg-[#0f1117]/90 backdrop-blur-sm">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
 
-  <button id="call">Create Offer (Call)</button>
+      <!-- Brand -->
+      <div class="flex items-center gap-2.5">
+        <!-- Simple SVG icon: two connected nodes -->
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="4" cy="11" r="3" fill="#4c6ef5"/>
+          <circle cx="18" cy="11" r="3" fill="#4c6ef5"/>
+          <path d="M7 11h8" stroke="#4c6ef5" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
+          <circle cx="4" cy="11" r="1.5" fill="white"/>
+          <circle cx="18" cy="11" r="1.5" fill="white"/>
+        </svg>
+        <span class="font-semibold text-white tracking-tight">PeerDrop</span>
+        <span class="badge badge-blue text-[11px] py-0.5">WebRTC</span>
+      </div>
 
-  <div id="answer">
-    <h3>Available Offers</h3>
-  </div>
+      <!-- Right side: status + disconnect -->
+      <div class="flex items-center gap-3">
+        <!-- Connection status — hidden until inside a room -->
+        <div id="nav-status" class="hidden items-center gap-2">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-400 dot-pulse"></span>
+          <span id="status-label" class="text-xs text-slate-400">Connecting…</span>
+        </div>
+        <!-- Room ID chip -->
+        <div id="nav-room-chip" class="hidden">
+          <span class="badge badge-gray font-mono" id="nav-room-id-label">—</span>
+        </div>
+        <!--
+          id: btn-disconnect
+          Listener: click → handleDisconnect()
+          Shown inside a room; hidden on landing page.
+        -->
+        <button id="btn-disconnect" class="btn btn-ghost hidden text-xs">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/></svg>
+          Leave room
+        </button>
+      </div>
 
-  <br>
+    </div>
+  </nav>
 
-<input type="file"  multiple id="fileInput" />
-<input type="button" value="Send MetaData" id="sendMeta">
-<input type="button" value="Submit" id="btn">
-<input type="button" value="Download" id="down">
-<input type="button" value="file" id="btn-file">
-<input type="button" value="dir set" id="btn-dir">
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MAIN WRAPPER — offset below navbar
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <main class="pt-14 min-h-screen">
 
-<br><br>
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 1 — LANDING / ROLE SELECT
+         The entry point. User picks whether they are a Sender or Receiver.
+         This sets the entire flow: senders create rooms, receivers join them.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-landing" class="page active max-w-xl mx-auto px-4 pt-20 pb-16 text-center">
 
-<h3>Upload Progress</h3>
-<progress id="uploadProgress" value="0" max="100" style="width:300px;"></progress>
-<span id="uploadText">0%</span>
+      <!-- Hero -->
+      <div class="mb-10">
+        <h1 class="text-3xl font-bold text-white mb-3 tracking-tight">
+          Direct file transfer,<br/>no middlemen.
+        </h1>
+        <p class="text-slate-400 text-base leading-relaxed">
+          Files travel peer-to-peer through WebRTC. Nothing is uploaded to a server.
+          <br/>Pick your role to get started.
+        </p>
+      </div>
 
-<br><br>
+      <!-- Role cards -->
+      <div class="grid grid-cols-2 gap-4 mb-8">
 
-<h3>Download Progress</h3>
-<progress id="downloadProgress" value="0" max="100" style="width:300px;"></progress>
-<span id="downloadText">0%</span>
+        <!--
+          id: btn-role-sender
+          Listener: click → selectRole('sender')
+        -->
+        <button
+          id="btn-role-sender"
+          class="card text-left hover:border-brand-500 transition-all duration-200 cursor-pointer group hover:bg-[#1a2040]"
+        >
+          <div class="w-11 h-11 rounded-xl bg-brand-500/15 flex items-center justify-center mb-4 group-hover:bg-brand-500/25 transition-colors">
+            <svg width="22" height="22" fill="none" stroke="#4c6ef5" stroke-width="1.8" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-white mb-1">Send files</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">Create a room and share files with connected peers.</p>
+        </button>
 
-  <div id="fileList"></div>
+        <!--
+          id: btn-role-receiver
+          Listener: click → selectRole('receiver')
+        -->
+        <button
+          id="btn-role-receiver"
+          class="card text-left hover:border-brand-500 transition-all duration-200 cursor-pointer group hover:bg-[#1a2040]"
+        >
+          <div class="w-11 h-11 rounded-xl bg-brand-500/15 flex items-center justify-center mb-4 group-hover:bg-brand-500/25 transition-colors">
+            <svg width="22" height="22" fill="none" stroke="#4c6ef5" stroke-width="1.8" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V3"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-white mb-1">Receive files</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">Enter a room code to receive files from a sender.</p>
+        </button>
 
-  <h3>Debug Log</h3>
-  <div id="log"></div>
+      </div>
 
-  <!-- Socket.IO -->
-<script src="/socket.io/socket.io.js"></script>
+      <!-- Info strip -->
+      <div class="flex items-center justify-center gap-6 text-xs text-slate-500">
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          End-to-end encrypted
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          No size limits
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Direct transfer
+        </span>
+      </div>
 
-  <!-- Your WebRTC script -->
-  <script type="module" src="script.js"></script>
-  <script  type="module" src="socketEvents.js"></script>
-    <script type="module" src="socket.js"></script>
-    <script type="module" src="dataChannel.js"></script>
-        <script type="module" src="webRTCConnection.js"></script>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 2A — SENDER SETUP
+         Sender creates (or gets assigned) a room ID, sees connection status,
+         adds files, and initiates the transfer.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-sender" class="page max-w-3xl mx-auto px-4 pt-10 pb-16">
+
+      <!-- Page header -->
+      <div class="flex items-center gap-3 mb-8">
+        <!--
+          id: btn-sender-back
+          Listener: click → goBack()
+        -->
+        <button id="btn-sender-back" class="btn btn-ghost p-2">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div>
+          <h2 class="text-xl font-bold text-white">Send files</h2>
+          <p class="text-xs text-slate-400 mt-0.5">Share your room code with the receiver, then add files.</p>
+        </div>
+        <div class="ml-auto">
+          <span class="badge badge-blue">Sender</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+        <!-- LEFT: Room info + file drop -->
+        <div class="lg:col-span-3 flex flex-col gap-5">
+
+          <!-- Room ID card -->
+          <div class="card">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Your room code</p>
+            <div class="flex items-center gap-3">
+              <span id="sender-room-id" class="font-mono text-2xl font-bold text-white tracking-[0.15em] select-all">——————</span>
+              <!--
+                id: btn-copy-room
+                Listener: click → copyRoomId()
+              -->
+              <button
+                id="btn-copy-room"
+                class="btn btn-secondary text-xs ml-auto"
+                title="Copy room code"
+              >
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">Share this 6-character code with whoever needs to receive files.</p>
+          </div>
+
+          <!-- File drop zone -->
+          <!--
+            id: sender-drop-zone
+            Listeners:
+              click       → triggerFileInput()
+              dragover    → onDragOver(event)
+              dragleave   → onDragLeave(event)
+              drop        → onDrop(event)
+          -->
+          <div
+            id="sender-drop-zone"
+            class="drop-zone border-2 border-dashed border-[#2a3045] rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 hover:border-brand-400 hover:bg-brand-500/5"
+          >
+            <!--
+              id: file-input
+              Listener: change → onFileInputChange(event)
+              Hidden; triggered programmatically via triggerFileInput()
+            -->
+            <input type="file" id="file-input" class="hidden" multiple />
+            <div class="w-14 h-14 rounded-2xl bg-brand-500/10 flex items-center justify-center mx-auto mb-4">
+              <svg width="26" height="26" fill="none" stroke="#4c6ef5" stroke-width="1.6" viewBox="0 0 24 24">
+                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+              </svg>
+            </div>
+            <p class="text-white font-medium mb-1">Drop files here</p>
+            <p class="text-sm text-slate-400">or click to browse — any type, any size</p>
+          </div>
+
+          <!-- Selected files list -->
+          <div id="sender-file-list" class="hidden flex flex-col gap-3">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Files queued</p>
+              <!--
+                id: btn-clear-files
+                Listener: click → clearFiles()
+              -->
+              <button id="btn-clear-files" class="btn btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300 hover:bg-red-400/10">Clear all</button>
+            </div>
+            <!-- File rows injected here by renderSenderFiles() -->
+            <div id="sender-files-container" class="flex flex-col gap-2"></div>
+
+            <!-- Totals -->
+            <div class="flex items-center justify-between mt-1 px-1">
+              <span class="text-xs text-slate-500" id="sender-file-count">0 files</span>
+              <span class="text-xs text-slate-400 font-mono" id="sender-total-size">0 B</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: Status panel + Send button -->
+        <div class="lg:col-span-2 flex flex-col gap-5">
+
+          <!-- Connection status panel -->
+          <div class="card">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-4">Connection</p>
+
+            <div class="flex flex-col gap-3">
+
+              <!-- Step: Room created -->
+              <div class="flex items-center gap-3" id="step-room-created">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500/15">
+                  <svg width="13" height="13" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div>
+                  <p class="text-sm text-white">Room created</p>
+                  <p class="text-xs text-slate-400">Waiting for receiver…</p>
+                </div>
+                <span class="badge badge-green ml-auto text-xs">Done</span>
+              </div>
+
+              <!-- Step: Peer connected -->
+              <div class="flex items-center gap-3" id="step-peer-connected">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-[#2a3045] dot-pulse" id="step-peer-dot">
+                  <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#64748b"/></svg>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-300" id="step-peer-label">Peer</p>
+                  <p class="text-xs text-slate-500" id="step-peer-sub">Waiting for receiver to join</p>
+                </div>
+                <span class="badge badge-gray ml-auto text-xs" id="badge-peer">Waiting</span>
+              </div>
+
+              <!-- Step: Data channel -->
+              <div class="flex items-center gap-3" id="step-data-channel">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 bg-[#2a3045]" id="step-dc-dot">
+                  <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#64748b"/></svg>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-500">Data channel</p>
+                  <p class="text-xs text-slate-600" id="step-dc-sub">Opens after peer joins</p>
+                </div>
+                <span class="badge badge-gray ml-auto text-xs" id="badge-dc">Pending</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Peer info (shown once peer connects) -->
+          <div id="peer-info-card" class="card hidden">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Peer info</p>
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-400" id="peer-avatar">P</div>
+              <div>
+                <p class="text-sm text-white font-medium" id="peer-name">—</p>
+                <p class="text-xs text-slate-400" id="peer-meta">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!--
+            id: btn-send-files
+            Listener: click → startTransfer()
+            Disabled until: files are queued AND peer data channel is open.
+          -->
+          <button
+            id="btn-send-files"
+            class="btn btn-primary w-full justify-center text-sm disabled:opacity-40"
+            disabled
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v9"/>
+            </svg>
+            Send files
+          </button>
+
+          <!-- Transfer state (shown during active transfer) -->
+          <div id="transfer-status-block" class="hidden card">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Transfer</p>
+              <span id="transfer-speed" class="text-xs font-mono text-brand-400">0 KB/s</span>
+            </div>
+            <!-- Overall progress bar -->
+            <div class="w-full bg-[#2a3045] rounded-full h-2 mb-2 overflow-hidden">
+              <div id="overall-progress-bar" class="progress-fill h-2 rounded-full bg-brand-500" style="width:0%"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-500" id="transfer-file-progress">File 0 of 0</span>
+              <span class="text-xs font-mono text-white" id="transfer-pct">0%</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 2B — RECEIVER SETUP
+         Receiver enters the room code and waits for the sender to push files.
+         Once connected, they see incoming file metadata + download progress.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-receiver" class="page max-w-3xl mx-auto px-4 pt-10 pb-16">
+
+      <!-- Page header -->
+      <div class="flex items-center gap-3 mb-8">
+        <!--
+          id: btn-receiver-back
+          Listener: click → goBack()
+        -->
+        <button id="btn-receiver-back" class="btn btn-ghost p-2">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div>
+          <h2 class="text-xl font-bold text-white">Receive files</h2>
+          <p class="text-xs text-slate-400 mt-0.5">Enter the room code shared by the sender.</p>
+        </div>
+        <div class="ml-auto">
+          <span class="badge" style="background:rgba(52,199,89,0.12);color:#4ade80;">Receiver</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+        <!-- LEFT: Join form + incoming files -->
+        <div class="lg:col-span-3 flex flex-col gap-5">
+
+          <!-- Join room card -->
+          <div id="join-room-card" class="card">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-4">Room code</p>
+            <div class="flex gap-3">
+              <!--
+                id: room-code-input
+                Listener: input → onRoomCodeInput(this)
+                Auto-uppercases and strips non-alphanumeric characters.
+                Enables btn-join-room once 6 characters are entered.
+              -->
+              <input
+                id="room-code-input"
+                type="text"
+                placeholder="e.g. AB12CD"
+                maxlength="6"
+                class="flex-1 bg-[#161b27] border border-[#2a3045] rounded-xl px-4 py-2.5 text-white font-mono text-lg tracking-[0.15em] uppercase placeholder:text-slate-600 placeholder:normal-case placeholder:text-sm placeholder:tracking-normal"
+              />
+              <!--
+                id: btn-join-room
+                Listener: click → joinRoom()
+                Disabled until room-code-input has exactly 6 characters.
+              -->
+              <button
+                id="btn-join-room"
+                class="btn btn-primary"
+                disabled
+              >
+                Join
+              </button>
+            </div>
+            <p id="join-error" class="text-xs text-red-400 mt-2 hidden">Room not found. Check the code and try again.</p>
+          </div>
+
+          <!-- Connection status (shown after joining) -->
+          <div id="receiver-status-card" class="card hidden">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center bg-brand-500/15 flex-shrink-0" id="receiver-status-icon">
+                <svg class="animate-spin" width="16" height="16" fill="none" stroke="#4c6ef5" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0"/></svg>
+              </div>
+              <div>
+                <p class="text-sm text-white" id="receiver-status-label">Connecting to peer…</p>
+                <p class="text-xs text-slate-400" id="receiver-status-sub">Establishing WebRTC data channel</p>
+              </div>
+              <span class="badge ml-auto" id="receiver-status-badge" style="background:rgba(234,179,8,0.12);color:#facc15;">Connecting</span>
+            </div>
+          </div>
+
+          <!-- Incoming files area (shown once transfer begins) -->
+          <div id="receiver-files-section" class="hidden flex flex-col gap-3">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Incoming files</p>
+            <!-- File rows injected here by onFileMetaReceived() -->
+            <div id="receiver-files-container" class="flex flex-col gap-3"></div>
+          </div>
+
+          <!-- All done state -->
+          <div id="receiver-done-card" class="card hidden border-green-500/20">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                <svg width="18" height="18" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-white">All files received</p>
+                <p class="text-xs text-slate-400">Your files are ready to save.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: Sender info + overall progress -->
+        <div class="lg:col-span-2 flex flex-col gap-5">
+
+          <!-- Sender info (shown after connect) -->
+          <div id="sender-info-card" class="card hidden">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Sender</p>
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-400" id="sender-avatar">S</div>
+              <div>
+                <p class="text-sm text-white font-medium" id="sender-name">—</p>
+                <p class="text-xs text-slate-400" id="sender-meta">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overall receive progress -->
+          <div id="receiver-overall-block" class="card hidden">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-xs font-medium text-slate-400 uppercase tracking-widest">Overall</p>
+              <span id="recv-speed" class="text-xs font-mono text-green-400">—</span>
+            </div>
+            <div class="w-full bg-[#2a3045] rounded-full h-2 mb-2 overflow-hidden">
+              <div id="recv-overall-bar" class="progress-fill h-2 rounded-full" style="width:0%; background:#4ade80;"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-500" id="recv-file-label">Waiting…</span>
+              <span class="text-xs font-mono text-white" id="recv-pct">0%</span>
+            </div>
+          </div>
+
+          <!-- Tips while waiting -->
+          <div id="receiver-tips" class="card border-dashed">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">How it works</p>
+            <ol class="flex flex-col gap-3 text-xs text-slate-400">
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">1.</span>
+                Enter the 6-character room code from the sender.
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">2.</span>
+                Wait for the WebRTC data channel to open.
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">3.</span>
+                Files arrive directly in your browser — save each one when ready.
+              </li>
+            </ol>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         PAGE 3 — TRANSFER COMPLETE (Sender side)
+         Shown after all files have been pushed. Summary of what was sent.
+         ───────────────────────────────────────────────────────────────────── -->
+    <div id="page-complete" class="page max-w-xl mx-auto px-4 pt-20 pb-16 text-center">
+
+      <!-- Success icon -->
+      <div class="w-20 h-20 rounded-3xl bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-6">
+        <svg width="36" height="36" fill="none" stroke="#4ade80" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+      </div>
+
+      <h2 class="text-2xl font-bold text-white mb-2">Transfer complete</h2>
+      <p class="text-slate-400 text-sm mb-8" id="complete-summary">All files sent successfully.</p>
+
+      <!-- Sent files summary — rows injected by showTransferComplete() -->
+      <div id="complete-file-list" class="text-left mb-8 flex flex-col gap-2"></div>
+
+      <!-- Actions -->
+      <div class="flex gap-3 justify-center">
+        <!--
+          id: btn-send-more
+          Listener: click → sendMoreFiles()
+          Returns to the sender page with the same room/connection still active.
+        -->
+        <button id="btn-send-more" class="btn btn-secondary">Send more files</button>
+        <!--
+          id: btn-go-home
+          Listener: click → goHome()
+          Resets all state and returns to the landing page.
+        -->
+        <button id="btn-go-home" class="btn btn-primary">Back to home</button>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TOAST NOTIFICATIONS
+       Lightweight toast system — appears top-right, auto-dismisses.
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="toast-container" class="fixed top-16 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+
+ <!-- Socket.IO -->
     
+    <script type="module" src="webRTCConnection.js"></script>
+      <script  type="module" src="socketEvents.js"></script>
+      <script type="module" src="dataChannel.js"></script>
+  <script type="module" src="script.js"></script>
+  <script  type="module" src="sri.js"></script>
+
+   
+    
+        
+    
+
+
 
 </body>
 </html>

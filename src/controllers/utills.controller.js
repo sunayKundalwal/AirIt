@@ -4,14 +4,26 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 
 
+
+
+
+
+
+
+
+async function roomCheck(roomCode) {
+    return await room.findOne({ roomId: roomCode })
+}
+
+
 // const generateRoomCode =asyncHandler(async(req,res) =>  {
 //      console.log(req.body)
 //     const generate8DigitHexNode = () =>{ return crypto.randomBytes(3).toString('hex')};
 //     console.log(generate8DigitHexNode())
 
-    // const r = await room.create({
-    //     roomId : generate8DigitHexNode()
-    // })
+// const r = await room.create({
+//     roomId : generate8DigitHexNode()
+// })
 
 //     console.log(r)
 
@@ -22,11 +34,11 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 // })
 async function generateRoomCode() {
 
-    const newRoomCode = await crypto.randomBytes(3).toString('hex');
-    console.log("new room code utils :",newRoomCode)
+    const newRoomCode = (await crypto.randomBytes(3).toString('hex'.toUpperCase()));
+    console.log("new room code utils :", newRoomCode)
 
-        const r = await room.create({
-        roomId : newRoomCode
+    const r = await room.create({
+        roomId: newRoomCode
     })
 
     console.log(r)
@@ -51,9 +63,97 @@ async function generateRoomCode() {
 //    })
 
 
-async function  joinRoom(roomCode,socketDetails) {
+async function joinRoom(roomCode, socketDetails,type) {
+
+    console.log(roomCode, socketDetails)
+
+    const roomStatus = await roomCheck(roomCode)
+
+    if(type == "offerer"){
+         if (roomStatus) {
+        await roomStatus.updateOne({
+            "offer.offererUserName": socketDetails.userName
+        })
+        if(roomStatus.connectedSockets.length > 2){
+            return {type : "info", message: "Room is already full!"}
+        }
+        await roomStatus.connectedSockets.push(socketDetails)
+
+        await roomStatus.save()
+        console.log(roomStatus)
+
+        return roomStatus
+    } else {
+        console.log("room does nto exist!!!")
+    }
+    }else if(type == "answerer"){
+        console.log("adding answere join room sokcet")
+        console.log(socketDetails)
+         if (roomStatus) {
+        await roomStatus.updateOne({
+            "offer.answererUserName": socketDetails.userName
+        })
+        if(roomStatus.connectedSockets.length > 2){
+            return {type : "info", message: "Room is already full!"}
+        }
+        await roomStatus.connectedSockets.push(socketDetails)
+
+        await roomStatus.save()
+        console.log(roomStatus)
+
+        return roomStatus
+    } else {
+        console.log("room does noo exist!!!")
+    }
+    }
+
 
 
 }
 
-export {generateRoomCode,joinRoom}
+
+async function addIceCandidates(roomCode, iceCandidates, type) {
+    const roomStatus =await roomCheck(roomCode)
+ 
+    if (type == "offerer") {
+          console.log("getting into offerer")
+        // await roomStatus.offer.offerIceCandidates.push(iceCandidates)
+        await room.findOneAndUpdate({roomId:roomCode},{ $push : {
+            "offer.offerIceCandidates" : (iceCandidates)
+        }})
+    //   await  roomStatus.save()
+        console.log(roomStatus)
+
+    } else if (type == "answerer") {
+           console.log("getting into answerer")
+       // await roomStatus.offer.answererIceCandidates.push(iceCandidates)
+      await room.findOneAndUpdate({roomId:roomCode},{ $push : {
+            "offer.answererIceCandidates" : (iceCandidates)
+        }})
+    //   await  roomStatus.save()
+        console.log(roomStatus)
+
+    }
+}
+
+async function addOfferAndAnswer(roomCode, pack, type) { 
+    console.log("reached add offer and answer")
+    const roomStatus = await roomCheck(roomCode)
+
+    if (type == "offerer") {
+         console.log("inside if")
+       await room.findOneAndUpdate({roomId:roomCode},{
+        "offer.offer" : pack
+       })
+        console.log(roomStatus)
+
+    } else if (type == "answerer") {
+
+       await room.findOneAndUpdate({roomId:roomCode},{
+        "offer.answer" : pack
+       })
+        console.log(roomStatus)
+    }
+}
+
+export { generateRoomCode, joinRoom ,addIceCandidates,addOfferAndAnswer,roomCheck}
