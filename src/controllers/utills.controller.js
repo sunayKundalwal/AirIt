@@ -75,14 +75,14 @@ async function joinRoom(roomCode, socketDetails,type) {
             "offer.offererUserName": socketDetails.userName
         })
         if(roomStatus.connectedSockets.length > 2){
-            return {type : "info", message: "Room is already full!"}
+            return {type : "info",status: "failed", message: "Room is already full!"}
         }
         await roomStatus.connectedSockets.push(socketDetails)
 
         await roomStatus.save()
         console.log(roomStatus)
-
-        return roomStatus
+       return {type : "info" , status : "success" , message : "Successfully Joined the Room!" ,offer : (roomStatus.offer)}
+       // return roomStatus
     } else {
         console.log("room does nto exist!!!")
     }
@@ -94,16 +94,17 @@ async function joinRoom(roomCode, socketDetails,type) {
             "offer.answererUserName": socketDetails.userName
         })
         if(roomStatus.connectedSockets.length > 2){
-            return {type : "info", message: "Room is already full!"}
+            return {type : "info",status : "failed", message: "Room is already full!"}
         }
         await roomStatus.connectedSockets.push(socketDetails)
 
         await roomStatus.save()
         console.log(roomStatus)
 
-        return roomStatus
+        return {type : "info" , status : "success" , message : "Successfully Joined the Room!" ,offer : roomStatus.offer}
     } else {
-        console.log("room does noo exist!!!")
+      console.log("room does noo exist!!!")
+       return {type : "info",status : "failed", message: "Room Does not Exist"}
     }
     }
 

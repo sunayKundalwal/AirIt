@@ -1,12 +1,15 @@
 
 import { socket } from "./socket.js"
+import { onPeerJoined, onReceiverConnected, onRoomNotFound } from "./sri.js";
 
 import { addNewIceCandidate,addAnswer,answerOffer, call, } from "./webRTCConnection.js"
 
 // -------------------- SOCKET EVENTS --------------------
 let roomCode;
 socket.io.engine.on("upgrade",async (transport)=>{
+
        await socket.emit("isConnected","it is now connected")
+
        console.log(socket.io.engine.transport.name);
        console.log("Using", transport.name); // websocket
 
@@ -17,23 +20,33 @@ socket.on('availableOffers', offers => {
     createOfferEls(offers)
 })
 
-socket.on("OfferData",(data)=>{
+  let data;
+socket.on("OfferData",async (d)=>{
+     data = JSON.parse(d)
     console.log("offer data")
     console.log(data)
-    if(data){
+    console.log(data.status)
+    if(data.status == "success"){
+        onReceiverConnected(data.offer.offererUserName)
         console.log("calling answer offer")
-        answerOffer(data)
+        answerOffer(data.offer)
+    }else if(data.status == "failed"){
+        onRoomNotFound()
     }
 })
 
 //someone just made a new offer and we're already here - call createOfferEls
 socket.on('newOfferAwaiting', offers => {
-    createOfferEls(offers)
+     //console.log("new offer awaiting")
+    console.log(offer)
+    
 })
 
 socket.on('answerResponse', offerObj => {
+    console.log("answer offer obj")
     console.log(offerObj)
     addAnswer(offerObj)
+    onPeerJoined(offerObj.answererUserName)
 })
 
 socket.on('receivedIceCandidateFromServer', iceCandidate => {

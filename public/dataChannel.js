@@ -1,5 +1,6 @@
 //import { renderFileList, sendFile, dirHandler } from "./script.js";
 import { userName } from "./socket.js";
+import { onDataChannelOpen, onFileMetaReceived } from "./sri.js";
 import { dataChannel } from "./webRTCConnection.js";
 
 
@@ -14,6 +15,7 @@ const answerDataChannel = async (dataChannel) => {
 
     dataChannel.onopen = () => {
         console.log("Data channel open");
+        onDataChannelOpen()
         // dataChannel.label = "answerer"
         //  dataChannel.send(JSON.stringify("{type:,dataChannelStatus : Open}"))
     };
@@ -71,12 +73,22 @@ const answerDataChannel = async (dataChannel) => {
             if (d.type == 'metaData') {
                 console.log("meta dataaaaaaaaaaaaa")
                 metaData = d
-                console.log(metaData)
-                console.log(userName)
+                if (metaData) {
+                    dataChannel.send(JSON.stringify({
+                        type: "MetaDataAck",
+                        status: "success",
+                        metadataReceived: true
+                    }))
+                    console.log(metaData)
+                    console.log(userName)
 
-                renderFileList(metaData.fileArray)
+                    for (let f of metaData.fileArray) {
+                        await onFileMetaReceived(f)
+                    }
 
 
+
+                }
             } else if (d.type == "currentFileMetaData") {
                 bytesReceived = 0;
                 percent = 0;
@@ -145,6 +157,7 @@ const callDataChannel = async (dataChannel) => {
 
 
     dataChannel.onopen = () => {
+        onDataChannelOpen()
         console.log("Data channel opennnnnnnnnnnnnnn");
         //dataChannel.label = "caller"
 
@@ -201,6 +214,14 @@ const callDataChannel = async (dataChannel) => {
                 metaData = d
                 console.log(metaData)
                 console.log(userName)
+                if (metaData) {
+                    dataChannel.send(JSON.stringify({
+                        type: "MetaDataAck",
+                        status: "success",
+                        metadataReceived: true
+                    }))
+                }
+
 
                 renderFileList(metaData.fileArray)
 

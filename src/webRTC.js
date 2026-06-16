@@ -74,8 +74,8 @@ const setupRTC = async () => {
         socket.on("joinRoom", async (d) => {
             console.log("Receiving Joinee data")
             console.log(d)
-            const offerData = (await joinRoom(d.roomCode, socketDetails,"answerer")).offer
-            socket.emit("OfferData", offerData)
+            const offerData = (await joinRoom(d.roomCode, socketDetails,"answerer"))
+            socket.emit("OfferData", JSON.stringify(offerData))
 
         })
 
