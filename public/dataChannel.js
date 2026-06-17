@@ -1,335 +1,243 @@
-//import { renderFileList, sendFile, dirHandler } from "./script.js";
 import { userName } from "./socket.js";
-import { onDataChannelOpen, onFileMetaReceived } from "./sri.js";
-import { dataChannel } from "./webRTCConnection.js";
+import {
+    onDataChannelOpen,
+    onFileMetaReceived,
+    onChunkReceived,
+    onFileComplete,
+    onTransferComplete,
+    folderGate,
+    showFolderPickerModal,
+    appState,
+    setSendButtonState,
+} from "./sri.js";
+
+// ─── Shared receiver-side state ───────────────────────────────────────────────
+// Both answerDataChannel and callDataChannel use the same receiver logic,
+// so it lives here as a factory function to avoid duplication.
+
+function attachReceiverHandlers(dataChannel) {
+    // Per-file tracking
+    let currentFile = null; // { name, size, mime, index, total, receivedBytes, startTime }
+    let allFilesMeta = [];   // accumulates every 'file-meta' seen so far
+    let grandTotalSize = 0;    // sum of .size across allFilesMeta (for overall %)
+    let grandReceived = 0;    // bytes received across ALL files so far
+
+    // For the File System Access (folder-gate) path we write straight to disk.
+    // For the fallback (unsupported browser) path we accumulate chunks in RAM.
+    let writable = null;  // FileSystemWritableFileStream | null
+    let chunks = [];    // ArrayBuffer[]  — used only in fallback path
+
+    dataChannel.addEventListener('message', async (event) => {
+        const data = event.data;
+        console.log(`data ${data}`)
 
 
-const answerDataChannel = async (dataChannel) => {
-
-
-
-    let chunks = [];
-    let metaData;
-    let percent
-
-
-    dataChannel.onopen = () => {
-        console.log("Data channel open");
-        onDataChannelOpen()
-        // dataChannel.label = "answerer"
-        //  dataChannel.send(JSON.stringify("{type:,dataChannelStatus : Open}"))
-    };
-
-    //   dataChannel.onmessage = (event) => {
-    //     console.log("Received:", event.data);
-    //   };
-
-
-    let handle;
-    let writable;
-    let bytesReceived = 0;
-    let currentFile;
-    dataChannel.onmessage = async (event) => {
-        //console.log("meowwwwwwwwwwww")
-        const data = (event.data)
-
+        // ── Binary chunk ──────────────────────────────────────────────────────────
         if (data instanceof ArrayBuffer) {
-            console.log("Got ArrayBuffer");
-            console.log(event)
-            console.log(`byte length:${data.byteLength}`)
-            // chunks.push(event.data);
+            if (!currentFile) return; // shouldn't happen; guard anyway
+
+            grandReceived += data.byteLength;
+            currentFile.receivedBytes += data.byteLength;
             console.log(writable)
-            await writable.write(data);
-
-            bytesReceived += data.byteLength
-
-            let percent = Math.min((bytesReceived / currentFile.size) * 100, 100);
-            console.log(`percent : ${percent}`)
-            document.getElementById("downloadProgress").value = percent
-            document.getElementById("downloadText").textContent = `${percent}%`
-            console.log(`byte length = ${bytesReceived}`)
-
-            if (bytesReceived === currentFile.size) {
-                console.log("Complete file received!!!!!")
-                bytesReceived = 0;
-                percent = 0;
-
-                dataChannel.send(JSON.stringify({
-                    type: "ack",
-                    status: "success",
-                    fileNumber: currentFile.fileNumber
-                }))
-
-                await writable.close();
-                console.log("writable closed")
-
+            // Write to disk (folder-gate path) or buffer in RAM (fallback path)
+            if (writable) {
+                await writable.write(data);
+            } else {
+                chunks.push(data);
             }
+            // if(writable == null){
+            //     chunks.push(data)
+            // }else{
+            //     chunks.forEach(d=> {
+            //                     onChunkReceived(
+            //     currentFile.index,
+            //     currentFile.receivedBytes,
+            //     currentFile.size,
+            //     overallPct,
+            //     speedBps,
+            // );
+            //     } )
+            //     chunk =
+            // }
 
+            // Progress update
+            const overallPct = Math.round((grandReceived / grandTotalSize) * 100);
+            const speedBps = currentFile.receivedBytes /
+                ((Date.now() - currentFile.startTime) / 1000);
 
+            onChunkReceived(
+                currentFile.index,
+                currentFile.receivedBytes,
+                currentFile.size,
+                overallPct,
+                speedBps,
+            );
+            return;
+        }
 
-        } else {
-            let d = JSON.parse(data)
-            console.log(`on message Data  : ${d.type}`)
-            if (d.type == 'metaData') {
-                console.log("meta dataaaaaaaaaaaaa")
-                metaData = d
-                if (metaData) {
-                    dataChannel.send(JSON.stringify({
-                        type: "MetaDataAck",
-                        status: "success",
-                        metadataReceived: true
-                    }))
-                    console.log(metaData)
-                    console.log(userName)
+        // ── Control message (JSON string) ─────────────────────────────────────────
+        let msg;
+        try {
+            msg = JSON.parse(data);
+        } catch (_) {
+            console.warn('[dataChannelHandler] non-JSON string message ignored:', data);
+            return;
+        }
 
-                    for (let f of metaData.fileArray) {
-                        await onFileMetaReceived(f)
+        switch (msg.type) {
+
+            // ── file-meta: new file is about to arrive ──────────────────────────────
+            case 'file-meta': {
+                currentFile = {
+                    name: msg.name,
+                    size: msg.size,
+                    mime: msg.mime || 'application/octet-stream',
+                    index: msg.index,
+                    total: msg.total,
+                    receivedBytes: 0,
+                    startTime: Date.now(),
+                };
+                console.log(currentFile)
+
+                allFilesMeta.push(msg);
+                grandTotalSize += msg.size;
+
+                chunks = [];     // reset chunk buffer for this file
+                // will be set below if folder-gate path is active
+
+                // Open a write stream straight to the user's chosen folder (if available)
+                console.log(`folderGate.ready :${folderGate.ready}`)
+                console.log(`folderGate.directoryHandle :- ${folderGate.directoryHandle}`)
+                if (folderGate.ready && folderGate.directoryHandle) {
+                    try {
+                        console.log("reached herewwwwwwwwwwwww")
+                        const fileHandle = await folderGate.directoryHandle.getFileHandle(
+                            msg.name,
+                            { create: true },
+                        );
+                        writable = await fileHandle.createWritable();
+
+                        
+                  dataChannel.send(JSON.stringify({
+                            type: "receiver-ready",
+                            index: msg.index,
+                            w:writable
+                        }));
+
+                        console.log(`writable : - ${writable}`)
+
+                      
+                    } catch (err) {
+                        console.error('[dataChannelHandler] getFileHandle failed:', err);
+                        writable = null; // fall back to in-RAM chunking
                     }
 
-
-
                 }
-            } else if (d.type == "currentFileMetaData") {
-                bytesReceived = 0;
-                percent = 0;
-                currentFile = d;
-                handle = await dirHandler.getFileHandle(`${userName}-${currentFile.fileName}`, {
-                    create: true
-                });
-                console.log("handle is setiped")
-
-                console.log(`handle data :${handle}`)
-
-                //handle = await window.showSaveFilePicker({ suggestedName: `${userName}-${metaData.fileName}` })
-                // console.log(`handleee ${handle.name}`)
-                writable = await handle.createWritable()
-                console.log("writeable initiated")
 
 
 
-
-
-
-
-                console.log(d)
-
-
-            } else if (d.type == "end") {
-                //if(metaData.fileArray.length == currentFile.fileNumber){
-
-                // await writable.close();
-                // console.log("writable closed")
-                // // }
-
-                // console.log("Transfer complete");
+                // Notify sri.js so it can show / gate the receiver UI
+                onFileMetaReceived(msg);
+                break;
             }
-        }
 
+            // ── file-end: all chunks for the current file have arrived ──────────────
+            case 'file-end': {
+                if (!currentFile) break;
 
+                if (writable) {
+                    // Folder-gate path: close the write stream; no Blob needed
+                    await writable.close();
+                    writable = null;
+                    onFileComplete(msg.index, currentFile.name, null);
+                } else {
+                    // Fallback path: assemble a Blob and let sri.js trigger a download
+                    const blob = new Blob(chunks, { type: currentFile.mime });
+                    chunks = [];
+                    onFileComplete(msg.index, currentFile.name, blob);
+                }
 
-
-
-        // STREAMING TO DISK using File System Access API:
-        // const fileHandle = await window.showSaveFilePicker({ suggestedName: "filename" });
-        // const writable = await fileHandle.createWritable();
-
-        // dc.onmessage = async (e) => {
-        //   await writable.write(e.data); // goes straight to disk
-        //   // e.data is freed from RAM immediately after this line
-        //   // Peak RAM: only ONE chunk at a time, no matter how big the file
-        // };
-
-        // dc.onclose = async () => {
-        //   await writable.close(); // finalize the file
-        // };
-        // //    const writable = await fileHandle.createWritable();
-
-        // await writable.write(chunk);
-    };
-
-
-};
-
-
-
-
-const callDataChannel = async (dataChannel) => {
-
-
-    dataChannel.onopen = () => {
-        onDataChannelOpen()
-        console.log("Data channel opennnnnnnnnnnnnnn");
-        //dataChannel.label = "caller"
-
-        //   dataChannel.send("Hello from Peer A");
-    };
-    let handle;
-    let writable;
-    let bytesReceived = 0;
-    let currentFile;
-    let chunks = [];
-    let metaData;
-    let percent
-
-    dataChannel.onmessage = async (event) => {
-        //console.log("meowwwwwwwwwwww")
-        const data = (event.data)
-
-        if (data instanceof ArrayBuffer) {
-            console.log("Got ArrayBuffer");
-            console.log(event)
-            console.log(`byte length:${data.byteLength}`)
-            // chunks.push(event.data);
-            console.log(writable)
-            await writable.write(data);
-
-            bytesReceived += data.byteLength
-
-            let percent = Math.min((bytesReceived / currentFile.size) * 100, 100);
-            console.log(`percent : ${percent}`)
-            document.getElementById("downloadProgress").value = percent
-            document.getElementById("downloadText").textContent = `${percent}%`
-            console.log(`byte length = ${bytesReceived}`)
-
-            if (bytesReceived == currentFile.size) {
-                console.log("Complete file received!!!!!")
-                bytesReceived = 0;
-                percent = 0;
-
+                // Send acknowledgement back to the sender so it can advance to the next file
                 dataChannel.send(JSON.stringify({
-                    type: "ack",
-                    status: "success",
-                    fileNumber: currentFile.fileNumber
-                }))
+                    type: 'ack',
+                    status: 'success',
+                    fileNumber: msg.index,
+                }));
 
+                currentFile = null;
+                break;
             }
 
-
-
-        } else {
-            let d = JSON.parse(data)
-            console.log(`on message Data  : ${d.type}`)
-            if (d.type == 'metaData') {
-                console.log("meta dataaaaaaaaaaaaa")
-                metaData = d
-                console.log(metaData)
-                console.log(userName)
-                if (metaData) {
-                    dataChannel.send(JSON.stringify({
-                        type: "MetaDataAck",
-                        status: "success",
-                        metadataReceived: true
-                    }))
-                }
-
-
-                renderFileList(metaData.fileArray)
-
-
-            } else if (d.type == "currentFileMetaData") {
-                bytesReceived = 0;
-                percent = 0;
-                currentFile = d;
-                handle = await dirHandler.getFileHandle(`${userName}-${currentFile.fileName}`, {
-                    create: true
-                });
-                console.log("handle is setiped")
-
-                console.log(`handle data :${handle}`)
-
-                //handle = await window.showSaveFilePicker({ suggestedName: `${userName}-${metaData.fileName}` })
-                // console.log(`handleee ${handle.name}`)
-                writable = await handle.createWritable()
-                console.log("writeable initiated")
-
-
-
-
-
-
-
-                console.log(d)
-
-
-            } else if (d.type == "end") {
-                // if(metaData.fileArray.length == currentFile.fileNumber){
-
-                //    await writable.close();
-                //    console.log("writable closed")
+            // ── transfer-complete: all files done ────────────────────────────────────
+            case 'transfer-complete': {
+                onTransferComplete();
+                break;
+            }
+            case 'DirAck' :{
+                // if(msg.status == "success"){
+                //     console.log(`DirAck log: ${msg}`)
+                //     const ready = appState.files.length > 0 && appState.connected;
+                //   document.getElementById('btn-send-files').disabled = !ready;
                 // }
-                await writable.close();
-                console.log("writable closed")
-
-                console.log("Transfer complete");
             }
+
+            // ── Legacy / unknown ─────────────────────────────────────────────────────
+            default:
+                console.warn('[dataChannelHandler] unhandled message type:', msg.type);
         }
+    });
+}
 
-
-
-
-
-        // STREAMING TO DISK using File System Access API:
-        // const fileHandle = await window.showSaveFilePicker({ suggestedName: "filename" });
-        // const writable = await fileHandle.createWritable();
-
-        // dc.onmessage = async (e) => {
-        //   await writable.write(e.data); // goes straight to disk
-        //   // e.data is freed from RAM immediately after this line
-        //   // Peak RAM: only ONE chunk at a time, no matter how big the file
-        // };
-
-        // dc.onclose = async () => {
-        //   await writable.close(); // finalize the file
-        // };
-        // //    const writable = await fileHandle.createWritable();
-
-        // await writable.write(chunk);
+// ─── ANSWERER side (receiver who did NOT create the offer) ────────────────────
+const answerDataChannel = async (dataChannel) => {
+    dataChannel.onopen = async () => {
+        console.log('[answerDataChannel] data channel open');
+        onDataChannelOpen();
+        if (!folderGate.ready) {
+            await showFolderPickerModal()
+        }
     };
 
+    attachReceiverHandlers(dataChannel);
+};
 
+// ─── CALLER side (the sender — also needs to handle incoming acks) ─────────────
+// NOTE: The sender mostly SENDS, but it does receive ack / control messages
+// from the receiver. Those are handled inside sendFile()'s inline listener
+// in script.js. This handler therefore only needs to fire onDataChannelOpen.
+let dirAckStatus = false;
+const callDataChannel = async (dataChannel) => {
+    dataChannel.onopen = async () => {
+        console.log('[callDataChannel] data channel open');
+        onDataChannelOpen();
 
-    // const sendFileBtn = document.getElementById("btn").addEventListener("click", async () => {
-    //  console.log("send button clicked")
-    //     const totalFiles = document.getElementById("fileInput").files
+    };
 
-
-
-    //     for await (let f of files){
-    //         let index = f.fileNumber
-    //         let file = document.getElementById("fileInput").files[index]
-    //        await sendFile(file)
-
-    //        const ack = new Promise((resolve) => {
-
-    //                if(parsedData.type = "ack"){
-    //                  if(parsedData.status == "success"){
-    //                     console.log(`${parsedData.fileNumber} is successfully transmitted`)
-    //                     resolve()
-    //                  }
-    //                }
-
-    //        })
-    //     }
-
-
-
-
-    // })
-
-    // if (parsedData.type == "info") {
-    //     await sendFile()
-
-    // }
-
-
+    // The caller (sender) doesn't need the full receiver handler, but we attach
+    // a minimal onmessage so unexpected messages are logged rather than silently
+    // dropped.
+    dataChannel.onmessage = (event) => {
+        if (typeof event.data !== 'string') return;
+        try {
+            const msg = JSON.parse(event.data);
+            // ack messages are consumed by the per-file listener in script.js;
+            // they may arrive here first if the listener hasn't been registered yet.
+            if (msg.type == 'ack') {
+                console.log('[callDataChannel] received:', msg);
+            } else if (msg.type == "DirAck") {
+                // console.log(msg)
+                //   if(msg.status == "success"){
+                //     console.log(`DirAck log: ${msg}`)
+                //     const ready = appState.files.length > 0 && appState.connected;
+                //   document.getElementById('btn-send-files').disabled = !ready;
+                // }
+                dirAckStatus =true;
+                setSendButtonState()
+            }
+        } catch (_) { }
+    };
 
 
 };
 
-
-
-
-
-
-
-export { answerDataChannel, callDataChannel }
+export { answerDataChannel, callDataChannel ,dirAckStatus};

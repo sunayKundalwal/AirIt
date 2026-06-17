@@ -2,306 +2,150 @@ import { userName } from "./socket.js";
 import { appState } from "./sri.js";
 import { dataChannel } from "./webRTCConnection.js";
 
-
-
-//document.querySelector('#user-name').innerHTML = userName;
-
-/////////////////////////////////////////////////
-
-
 const CHUNK_SIZE = 256 * 1024;
-let selectedFiles = [];
-let dirHandler
-// dataChannel.bufferedAmountLowThreshold = 1024 * 1024;
 
-
+// ─── Flow control: wait for the send buffer to drain before continuing ───────
 function waitForBufferLow(dc) {
-        return new Promise(resolve => {
-            console.log(`buffered memory : ${dc.onbufferedamountlow}`)
-            dc.onbufferedamountlow = () => resolve();
-        });
-    }
-
-    const sendFile = async (file,currentFileNumber) => {
-        //const file = document.getElementById("fileInput").files[index]
-               dataChannel.send(JSON.stringify({
-        type: "currentFileMetaData",
-        fileName: file.name,
-        mime: file.type,
-        size: file.size,
-        fileNumber : currentFileNumber
-    }));
-
-        let offset = 0;
-        let percent;
-
-        while (offset < file.size) {
-            console.log((offset / file.size) * 100)
-            // console.log(dataChannel.bufferedAmount);
-            // 🔥 BACKPRESSURE CONTROL
-            if (dataChannel.bufferedAmount > 4 * 1024 * 1024) {
-                await waitForBufferLow(dataChannel);
-            }
-
-            const slice = file.slice(offset, offset + CHUNK_SIZE);
-            const buffer = await slice.arrayBuffer();
-
-            dataChannel.send(buffer);
-
-            offset += CHUNK_SIZE;
-
-            percent = Math.min((offset / file.size) * 100, 100);
-
-            if (percent == 100) {
-                dataChannel.send(JSON.stringify({ type: "end" }));
-            }
-
-            uploadProgress.value = percent;
-            uploadText.textContent = percent + "%";
-        }
-
-
+  return new Promise(resolve => {
+    dc.bufferedAmountLowThreshold = 1 * 1024 * 1024; // 1 MB low-water mark
+    dc.onbufferedamountlow = () => {
+      dc.onbufferedamountlow = null;
+      resolve();
     };
-
-
-// const sendFileBtn = document.getElementById("btn").addEventListener("click", async () => {
-
-//     const file = document.getElementById("fileInput").files[0]
-    
-
-    
-
-//     sendFile(file)
-// })
-
-// document.getElementById("btn-dir").addEventListener("click",async ()=> {
-//       dirHandler = await window.showDirectoryPicker();
-//       console.log("dirHAndlesssssssssssss")
-//       let status = await dirHandler.queryPermission({
-//     mode: "readwrite"
-// });
-
-//  console.log("Before request:", status);
-
-//     if (status !== "granted") {
-//         status = await dirHandler.requestPermission({
-//             mode: "readwrite"
-//         });
-
-//         console.log("After request:", status);
-//     }
-// })
-
-
-
-// document.getElementById("down").addEventListener("click", async () => {
-//     chunks.forEach(element => {
-//         console.log(element)
-//     });
-
-//     const blob = new Blob(chunks,
-//         { type: metaData.mime }
-
-//     );
-//     console.log(`blob  : ${blob}`)
-
-//     const a = document.createElement("a");
-//     console.log(`a log ${a}`)
-//     a.href = URL.createObjectURL(blob);
-//     a.download = `DropIt-${metaData.fileName}`;
-//     a.click();
-//     console.log(`sender fie size: ${metaData.size} ans recieved file size: ${blob.size}`)
-// })
-
-// document.getElementById("sendMeta").addEventListener("click", async () => {
-//     console.log(`dataChannel label: ${(dataChannel.label)}`)
-//     const x = document.getElementById("fileInput").files
-//         console.log(x)
-//     console.log("called metaSend")
-//     const file = document.getElementById("fileInput").files
-//     console.log(file)
-//     // dataChannel.send(JSON.stringify({
-//     //     type:"metaData",
-//     //     files : JSON.stringify
-//     // }))
-// let fileArray =[]
-//     for(let f of file){
-//     //        dataChannel.send(JSON.stringify({
-//     //     type: "metaData",
-//     //     fileName: f.name,
-//     //     mime: f.type,
-//     //     size: f.size
-//     // }));
-//     fileArray.push({
-//         fileNumber : (fileArray.length+1),
-//         name: f.name,
-//         type: f.type,
-//         size: f.size,
-//         lastModified: f.lastModified
-//     })
-//     }
-
-
-
-//     await dataChannel.send(JSON.stringify({
-//         type: "metaData",
-//         // fileName: file.name,
-//         // mime: file.type,
-//         // size: file.size
-//         fileArray : fileArray
-//     }));
-
-
-
-// })
-
-
-
-// document.getElementById("fileInput").addEventListener("change", (event)=> {
-//     const files = event.target.value ? event.target.files : [];
-
-//     console.log(files)
-// })
-
-// function renderFileList(selectedFiles) {
-//   const container = document.getElementById("fileList");
-//   container.innerHTML = "";
-
-//   selectedFiles.forEach((file, index) => {
-//     const div = document.createElement("div");
-//     div.className = "file-item";
-
-//     div.innerHTML = `
-//       <div class="file-name">${file.name}</div>
-//       <div class="small-text">${(file.size / 1024).toFixed(2)} KB</div>
-
-
-
-//       <div class="progress-row">
-//       <div>upload</div>
-//         <progress id="up-${index}" value="0" max="100"></progress>
-//         <span id="upText-${index}">0%</span>
-//       </div>
-
-//       <div class="progress-row">
-//       <div>download</div>
-//         <progress id="down-${index}" value="0" max="100"></progress>
-//         <span id="downText-${index}">0%</span>
-//       </div>
-//     `;
-
-//     container.appendChild(div);
-//   });
-// }
-
-// fileInput.addEventListener("change", (e) => {
-//   selectedFiles = Array.from(e.target.files);
-//   renderFileList(selectedFiles);
-// });
-
-let fileArr = []
-
-
-//   document.getElementById('btn-send-files')
-//     .addEventListener('click', ()=> {
-//       const Files = appState.files
-//             console.log(Files)
-//     });
-
-async function sendMeta (){
-    let fileArray = []
-console.log("send button clicked")
-           
-
-
-
-
-
-
-            const Files = appState.files
-            console.log(Files)
- 
-             for(let f of Files){
-    //        dataChannel.send(JSON.stringify({
-    //     type: "metaData",
-    //     fileName: f.name,
-    //     mime: f.type,
-    //     size: f.size
-    // }));
-    fileArray.push({
-        fileNumber : (fileArray.length+1),
-        name: f.name,
-        type: f.type,
-        size: f.size,
-        lastModified: f.lastModified
-    })
-    }
-
-
-
-    await dataChannel.send(JSON.stringify({
-        type: "metaData",
-        // fileName: file.name,
-        // mime: file.type,
-        // size: file.size
-        fileArray : fileArray
-    })); 
-                  await new Promise((resolve) => {
-                dataChannel.addEventListener("message",(e)=> {
-                    const parsedData = JSON.parse(e.data)
-                       if(parsedData.type == "MetaDataAck"){
-                         console.log("MetaData successfully delivered!")
-                       
-                }})
-                      })
-
+  });
 }
 
+function waitReceiverReady(index) {
+     console.log("reached receiver ready", index);
+    return new Promise(resolve => {
+        console.log("waiting receiver-ready", index);
+        const handler = event => {
+            try {
+                const msg = JSON.parse(event.data);
 
-document.getElementById("btn-send-files").addEventListener("click", async () => {
-         
+                if (
+                    msg.type === "receiver-ready" &&
+                    msg.index === index
+                ) {
+                    dataChannel.removeEventListener(
+                        "message",
+                        handler
+                    );
 
+                    resolve();
+                }
+            } catch(error) {
+                console.log(error)
+            }
+        };
 
+        dataChannel.addEventListener("message", handler);
+    });
+}
+// ─── Send a single File over the data channel ─────────────────────────────────
+// Uses the NEW protocol expected by sri.js:
+//   1. JSON  { type:'file-meta', name, size, mime, index, total }
+//   2. binary ArrayBuffer chunks
+//   3. JSON  { type:'file-end', index }
+//
+// Waits for an { type:'ack', fileNumber } from the receiver before resolving,
+// so the caller can sequence files reliably.
+const sendFile = async (file, index, total) => {
+  // 1. Send metadata for this file
 
-
-            
-            //    let index =1;
-            // for await (let f of Files){
-            //     fileArr.push(f)
-            //     let currentFileNumber = fileArr.length
-            //     console.log("f printing")
-            //     console.log(f)
-            //     //let index = f.fileNumber
-            //     let file = document.getElementById("fileInput").files[index]
-            //     console.log(index)
-            //    await sendFile(f,currentFileNumber)
-
-            //   await new Promise((resolve) => {
-            //     dataChannel.addEventListener("message",(e)=> {
-            //         const parsedData = JSON.parse(e.data)
-            //            if(parsedData.type == "ack"){
-            //              if(parsedData.status == "success"){
-            //                 console.log(`${currentFileNumber} is successfully transmitted`)
-            //                 resolve()
-            //              }
-                       
-            //     }})
-            //           })
-
-            //    }
-            })
-
-          
-
-            //  document.getElementById("btn-dir").addEventListener("click", async () => {
-                
-            //         handle = await dirHandle.getFileHandle(`${userName}-${metaData.fileName}`, {
-            //             create: true
-            //         });
-        
+  const readyPromise = waitReceiverReady(index)
+  await readyPromise
 
 
-// export const uploadProgress = document.getElementById("uploadProgress");
-// export const uploadText = document.getElementById("uploadText");
+//     await new Promise(resolve => {
+//     const handler = (event) => {
+//       try {
+//         const msg = JSON.parse(event.data);
+//         if (msg.type === 'receiver-ready' && msg.index === index) {
+//             console.log("receiver readyyyyy!!!!!!!!!!!!!")
+//             console.log(JSON.parse(msg))
+//           dataChannel.removeEventListener('message', handler);
 
-export {sendFile,dirHandler,sendMeta}
+//            let offset = 0;
+
+//   while (offset < file.size) {
+//     // Flow-control: pause if the channel's send buffer is too full
+//     if (dataChannel.bufferedAmount > 4 * 1024 * 1024) {
+//       await waitForBufferLow(dataChannel);
+//     }
+
+//     const slice  = file.slice(offset, offset + CHUNK_SIZE);
+//     const buffer = await slice.arrayBuffer();
+//     dataChannel.send(buffer);
+//     offset += buffer.byteLength;
+//   }
+//           resolve();
+//         }
+//       } catch (_) { /* ignore binary messages */ }
+//     };
+//     dataChannel.addEventListener('message', handler);
+//   });
+
+  let offset = 0;
+
+  while (offset < file.size) {
+    // Flow-control: pause if the channel's send buffer is too full
+    if (dataChannel.bufferedAmount > 4 * 1024 * 1024) {
+      await waitForBufferLow(dataChannel);
+    }
+
+    const slice  = file.slice(offset, offset + CHUNK_SIZE);
+    const buffer = await slice.arrayBuffer();
+    console.log("sending chunk")
+    console.log("chunk")
+    dataChannel.send(buffer);
+    offset += buffer.byteLength;
+  }
+
+  // 2. Signal end of this file
+  dataChannel.send(JSON.stringify({ type: 'file-end', index: index }));
+
+  // 3. Wait for receiver's acknowledgement before moving on to the next file
+  await new Promise(resolve => {
+    const handler = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'ack' && msg.fileNumber === index) {
+          dataChannel.removeEventListener('message', handler);
+          resolve();
+        }
+      } catch (_) { /* ignore binary messages */ }
+    };
+    dataChannel.addEventListener('message', handler);
+  });
+};
+
+// ─── Send metadata for all queued files, then send the files one by one ──────
+// Called from sri.js's btn-send-files click handler.
+//
+// Protocol sequence:
+//   For each file i:
+//     → file-meta  (JSON)
+//     → chunk …   (binary)
+//     → file-end   (JSON)
+//     ← ack        (JSON, from receiver)
+//   → transfer-complete (JSON)
+const sendMeta = async () => {
+  const files = appState.files;
+  if (!files || files.length === 0) return;
+
+  console.log('[sendMeta] starting transfer of', files.length, 'file(s)');
+
+  for (let i = 0; i < files.length; i++) {
+    console.log(`[sendMeta] sending file ${i + 1}/${files.length}: ${files[i].name}`);
+    await sendFile(files[i], i, files.length);
+    console.log(`[sendMeta] file ${i + 1} acknowledged`);
+  }
+
+  // All files sent — notify receiver the batch is complete
+  dataChannel.send(JSON.stringify({ type: 'transfer-complete' }));
+  console.log('[sendMeta] transfer-complete sent');
+};
+
+// Export for use in sri.js and dataChannelHandler.js
+export { sendFile, sendMeta };
