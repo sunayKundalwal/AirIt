@@ -15,10 +15,10 @@ socket.io.engine.on("upgrade",async (transport)=>{
 
 // const socket = io()
 //on connection get all available offers and call createOfferEls
-socket.on('availableOffers', offers => {
-    console.log(offers)
-    createOfferEls(offers)
-})
+// socket.on('availableOffers', offers => {
+//     console.log(offers)
+//     createOfferEls(offers)
+// })
 
   let data;
 socket.on("OfferData",async (d)=>{
@@ -38,7 +38,7 @@ socket.on("OfferData",async (d)=>{
 //someone just made a new offer and we're already here - call createOfferEls
 socket.on('newOfferAwaiting', offers => {
      //console.log("new offer awaiting")
-    console.log(offer)
+    //console.log(offer)
     
 })
 

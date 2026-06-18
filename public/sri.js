@@ -211,6 +211,7 @@ function setNavStatus(state, label) {
     connected:    'bg-green-400',
     transferring: 'bg-blue-400',
     done:         'bg-green-400',
+    error :       'bg-red-400'
   };
   dot.className = `w-2 h-2 rounded-full flex-shrink-0 ${colors[state] || 'bg-slate-400'} ${state !== 'done' ? 'dot-pulse' : ''}`;
 }
@@ -302,7 +303,7 @@ function renderSenderFiles() {
   container.innerHTML = appState.files.map((file, i) => `
     <div class="file-row flex items-center gap-3">
       <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-           style="background:rgba(76,110,245,0.12)">
+           style="background:rgba(124,92,255,0.12)">
         ${fileTypeIcon(file.name)}
       </div>
       <div class="flex-1 min-w-0">
@@ -457,7 +458,7 @@ function onDataChannelOpen() {
 
   //setSendButtonState();
  
-  setSendButtonState()
+  //setSendButtonState()
   showToast('Data channel open — you can now send files!', 'success');
 }
 
@@ -658,7 +659,7 @@ function revealReceiverTransferUI(meta) {
       </div>
       <span class="badge badge-yellow text-xs flex-shrink-0" id="recv-badge-${meta.index}">Queued</span>
     </div>
-    <div class="w-full bg-[#2a3045] rounded-full h-1.5 overflow-hidden">
+    <div class="w-full bg-[#242842] rounded-full h-1.5 overflow-hidden">
       <div id="recv-bar-${meta.index}" class="progress-fill h-1.5 rounded-full" style="width:0%; background:#4ade80;"></div>
     </div>
     <div id="recv-save-${meta.index}" class="hidden"></div>
@@ -796,30 +797,38 @@ function goHome() {
    ───────────────────────────────────────────────────────────────────────── */
 const TOAST_STYLES = {
   success: {
-    wrap: 'bg-green-500 border-green-600 text-white',
-    icon: `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`
+    wrap: 'text-white',
+    icon: `<svg width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`
   },
 
   error: {
-    wrap: 'bg-red-500 border-red-600 text-white',
-    icon: `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>`
+    wrap: 'text-white',
+    icon: `<svg width="14" height="14" fill="none" stroke="#f87171" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>`
   },
 
   warn: {
-    wrap: 'bg-yellow-500 border-yellow-600 text-black',
-    icon: `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`
+    wrap: 'text-white',
+    icon: `<svg width="14" height="14" fill="none" stroke="#facc15" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`
   },
 
   info: {
-    wrap: 'bg-blue-500 border-blue-600 text-white',
-    icon: `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>`
+    wrap: 'text-white',
+    icon: `<svg width="14" height="14" fill="none" stroke="#9b7bff" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>`
   }
+};
+
+const TOAST_BORDER_COLOR = {
+  success: '#4ade80',
+  error:   '#f87171',
+  warn:    '#facc15',
+  info:    '#9b7bff',
 };
 
 function showToast(message, type = 'info', duration = 3500) {
   const style = TOAST_STYLES[type] || TOAST_STYLES.info;
   const toast = document.createElement('div');
   toast.className = `toast-item ${style.wrap}`;
+  toast.style.borderLeftColor = TOAST_BORDER_COLOR[type] || TOAST_BORDER_COLOR.info;
   toast.innerHTML = `<span class="toast-icon">${style.icon}</span><span>${escHtml(message)}</span>`;
 
   const container = document.getElementById('toast-container');
@@ -863,7 +872,7 @@ function fileTypeIcon(fileName) {
     zip:  '#facc15', rar: '#facc15', tar: '#facc15', gz: '#facc15',
     txt:  '#94a3b8', md: '#94a3b8',
     js:   '#facc15', ts: '#60a5fa', py: '#4ade80', html: '#fb923c',
-  }[ext] || '#6b8eff';
+  }[ext] || '#9b7bff';
 
   return `<svg width="16" height="16" fill="none" stroke="${color}" stroke-width="1.8" viewBox="0 0 24 24">
     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -956,5 +965,7 @@ export {
   onFileComplete,
   onTransferComplete,
   showFolderPickerModal,
-  setSendButtonState
+  setSendButtonState,
+  showToast,
+  setNavStatus
 };

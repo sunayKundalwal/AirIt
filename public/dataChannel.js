@@ -210,7 +210,7 @@ const callDataChannel = async (dataChannel) => {
     dataChannel.onopen = async () => {
         console.log('[callDataChannel] data channel open');
         onDataChannelOpen();
-
+        setSendButtonState()
     };
 
     // The caller (sender) doesn't need the full receiver handler, but we attach
