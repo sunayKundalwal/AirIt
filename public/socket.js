@@ -1,4 +1,3 @@
-import { io } from "socket.io-client";
 
 
 
@@ -11,7 +10,7 @@ const userName = "AirIt" + Math.floor(Math.random() * 100000);
 //const socketURL =  "http://localhost:8080"
 const socketURL = "https://airit-production-716d.up.railway.app/" 
 
-const socket = io(socketURL, {
+const socket = window.io(socketURL, {
     auth: {
         userName,
         password
