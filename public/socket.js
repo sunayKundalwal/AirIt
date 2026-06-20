@@ -2,7 +2,7 @@
 
 
 const userName = "AirIt" + Math.floor(Math.random() * 100000);
-
+const password = 'x'
 
 
 //const socketURL =  "https://cozy-tightrope-protegee.ngrok-free.dev"
