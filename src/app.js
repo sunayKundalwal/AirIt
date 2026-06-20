@@ -43,8 +43,9 @@ app.use(express.json()); // Parse application/json
 app.use("/api/v1/utils",utilsRouter)
 
 connectDb().then(() =>{
-server.listen(8080, "0.0.0.0", () => {
-    console.log("Listening on the port 8080!!!")
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Listening on port ${PORT}!!!`)
     setupRTC()
 })
 }).catch(err=>{
