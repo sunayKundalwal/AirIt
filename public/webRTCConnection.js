@@ -203,10 +203,20 @@ const addAnswer = async (offerObj) => {
 };
 
 
+
+
+
 // -------------------- PEER CONNECTION -------------------
 const createPeerConnection = async (offerObj, roomId) => {
     try {
         peerConnection = new RTCPeerConnection(peerConfiguration);
+
+        peerConnection.onicecandidateerror = (event) => {
+    console.log("ICE Error");
+    console.log("URL:", event.url);
+    console.log("Error Code:", event.errorCode);
+    console.log("Error Text:", event.errorText);
+};
 
         // ICE candidates
         peerConnection.addEventListener("icecandidate", (e) => {
