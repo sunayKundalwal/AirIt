@@ -6,6 +6,7 @@ import { setupRTC } from "./webRTC.js"
 import utilsRouter from "./routes/utils.router.js"
 import dotenv from "dotenv"
 import connectDb from "./DB/index.js"
+import cors from "cors";
 
 dotenv.config({
     path: "./src/.env"
@@ -17,9 +18,22 @@ const app = express()
 const server = http.createServer(app)
 const io = new Server(server)
 
+app.use(
+  cors({
+    origin: [
+      "https://airit.site",
+      "https://www.airit.site",
+      "https://air-it.vercel.app"
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  })
+);
+
 app.use(express.static("public"))
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json()); // Parse application/json
+
 
 
 app.use("/api/v1/utils",utilsRouter)
