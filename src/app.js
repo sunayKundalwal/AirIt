@@ -23,8 +23,8 @@ const io = new Server(server,{
     // "https://www.airit.site",
     //   "https://air-fv1gf9bkw-todos-projects-0a36388c.vercel.app",
     //   "https://air-it-todos-projects-0a36388c.vercel.app",
-    //   "https://air-it.vercel.app/"
-    "*"
+      "https://air-it.vercel.app"
+    //"*"
     ],
     methods: ["GET", "POST"],
     credentials: true
