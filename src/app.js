@@ -24,8 +24,8 @@ const io = new Server(server,{
     //   "https://air-fv1gf9bkw-todos-projects-0a36388c.vercel.app",
     //   "https://air-it-todos-projects-0a36388c.vercel.app",
       "https://air-it.vercel.app",
-      "https://www.airit.site/",
-      "https://airit.site/"
+      "https://www.airit.site",
+      "https://airit.site"
     //"*"
     ],
     methods: ["GET", "POST"],
