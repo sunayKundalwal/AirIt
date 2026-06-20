@@ -211,6 +211,7 @@ const createPeerConnection = async (offerObj, roomId) => {
         // ICE candidates
         peerConnection.addEventListener("icecandidate", (e) => {
             if (e.candidate) {
+                console.log(e.candidate.candidate)
                 socket.emit("sendIceCandidateToSignalingServer", {
                     iceCandidate: e.candidate,
                     iceUserName: userName,
