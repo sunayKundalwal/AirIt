@@ -10,39 +10,35 @@ let didIOffer = false;
 let dataChannel;
 
 const peerConfiguration = {
-    iceServers: [
-        {
-            urls: [{
-                "stun:stun.l.google.com:19302",
-                "stun:stun1.l.google.com:19302"
-            },{
-                   {
-        urls: "stun:stun.relay.metered.ca:80",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:80",
-        username: "96740a752ec80c594b77a996",
-        credential: "nYjSqUTw4aOr/VzH",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:80?transport=tcp",
-        username: "96740a752ec80c594b77a996",
-        credential: "nYjSqUTw4aOr/VzH",
-      },
-      {
-        urls: "turn:global.relay.metered.ca:443",
-        username: "96740a752ec80c594b77a996",
-        credential: "nYjSqUTw4aOr/VzH",
-      },
-      {
-        urls: "turns:global.relay.metered.ca:443?transport=tcp",
-        username: "96740a752ec80c594b77a996",
-        credential: "nYjSqUTw4aOr/VzH",
-      
-            }
-            ]
-        }
-    ]
+  iceServers: [
+    {
+      urls: [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302",
+        "stun:stun.relay.metered.ca:80"
+      ]
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80",
+      username: "YOUR_USERNAME",
+      credential: "YOUR_CREDENTIAL"
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "YOUR_USERNAME",
+      credential: "YOUR_CREDENTIAL"
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "YOUR_USERNAME",
+      credential: "YOUR_CREDENTIAL"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "YOUR_USERNAME",
+      credential: "YOUR_CREDENTIAL"
+    }
+  ]
 };
 
 
