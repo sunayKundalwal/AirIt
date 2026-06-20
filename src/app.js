@@ -16,10 +16,8 @@ dotenv.config({
 ////////////// setting up websocket connection
 const app = express()
 const server = http.createServer(app)
-const io = new Server(server)
-
-app.use(
-  cors({
+const io = new Server(server,{
+    cors : {
     origin: [
    //   "https://airit.site",
     // "https://www.airit.site",
@@ -30,8 +28,11 @@ app.use(
     ],
     methods: ["GET", "POST"],
     credentials: true
-  })
-);
+  }
+})
+
+
+
 
 app.use(express.static("public"))
 app.use(express.urlencoded({ extended: true }));
