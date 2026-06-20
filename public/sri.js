@@ -156,7 +156,7 @@ function resetFolderGate() {
    SENDER PAGE INIT
    ───────────────────────────────────────────────────────────────────────── */
 function initSenderPage(roomId) {
-  document.getElementById('sender-room-id').textContent   = roomId;
+  document.getElementById('sender-room-id').textContent   = roomId.toUpperCase();
   document.getElementById('nav-room-id-label').textContent = roomId;
   appState.files = [];
   renderSenderFiles();
