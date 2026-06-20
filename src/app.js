@@ -21,9 +21,9 @@ const io = new Server(server)
 app.use(
   cors({
     origin: [
-      "https://airit.site",
-      "https://www.airit.site",
-      "https://air-it.vercel.app"
+   //   "https://airit.site",
+///      "https://www.airit.site",
+      "https://air-fv1gf9bkw-todos-projects-0a36388c.vercel.app"
     ],
     methods: ["GET", "POST"],
     credentials: true
