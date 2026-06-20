@@ -46,7 +46,7 @@ const call = async () => {
         // console.log("sent offer to server")
         socket.emit("newOffer", offer);
         console.log("sent offer to server")
-
+         console.log(peerConnection.sctp.maxMessageSize);
         callDataChannel(dataChannel)
     } catch (error) {
         console.log(error)
@@ -83,7 +83,41 @@ const answerOffer = async (offerObj) => {
             offerIceCandidates.forEach(async (c) => {
                 await peerConnection.addIceCandidate(c);
             });
+
+            
         });
+
+         console.log(peerConnection.sctp.maxMessageSize);
+      
+         peerConnection.onconnectionstatechange = () => {
+            console.log("State:", peerConnection.connectionState);
+
+            switch (peerConnection.connectionState) {
+                case "new":
+                case "connecting":
+                    showToast("DataChannel Connecting…", "success");
+                                        setNavStatus('connecting','DataChannel is Connecting')
+                    break;
+                case "connected":
+                    showToast("DataChannel Online", "success");
+                    break;
+                case "disconnected":
+                    showToast("DataChannel Disconnecting…", "warn");
+                    break;
+                case "closed":
+                    showToast("DataChannel is Offline", "failed");
+                    break;
+                case "failed":
+                    showToast("DataChannel failed,try with different internet connection!", "failed");
+                    setNavStatus('failed',' your network is blocking your request')
+                    break;
+                default:
+                    showToast("Unknown", "failed");
+                    break;
+            }
+        }
+
+        
     } catch (error) {
         console.log(error)
         showToast("Your network is blocking the Connection request, try Connecting to another Network!", "failed")

@@ -9,6 +9,7 @@ import {
     showFolderPickerModal,
     appState,
     setSendButtonState,
+    showToast,
 } from "./sri.js";
 
 // ─── Shared receiver-side state ───────────────────────────────────────────────
@@ -179,6 +180,11 @@ function attachReceiverHandlers(dataChannel) {
                 //     const ready = appState.files.length > 0 && appState.connected;
                 //   document.getElementById('btn-send-files').disabled = !ready;
                 // }
+            }
+            case 'disconnect' : {
+                
+                showToast('warn',"Sender left the room")
+               document.location.reload()
             }
 
             // ── Legacy / unknown ─────────────────────────────────────────────────────

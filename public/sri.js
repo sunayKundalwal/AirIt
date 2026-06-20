@@ -381,8 +381,8 @@ function joinRoom() {
 }
 
 function onReceiverConnected(senderName) {
-  appState.connected = true;
-  setNavStatus('connected', 'Connected');
+  appState.connected = false;
+  setNavStatus('connecting', 'Waiting for DataChannel to establish');
 
   document.getElementById('receiver-status-icon').innerHTML = `
     <svg width="16" height="16" fill="none" stroke="#4ade80" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`;
@@ -445,6 +445,7 @@ function onPeerJoined(peerName) {
 
 function onDataChannelOpen() {
   appState.connected = true;
+  setNavStatus("connected","Connected")
 
   const dot   = document.getElementById('step-dc-dot');
   const sub   = document.getElementById('step-dc-sub');
@@ -532,9 +533,11 @@ async function startTransfer() {
 
 
 
-    const CHUNK_SIZE = 128 * 1024;
+    let CHUNK_SIZE = 256 * 1024;
     const reader     = new FileReader();
     let offset       = 0;
+
+
 
     await new Promise((resolve, reject) => {
       function readNextChunk() {
@@ -758,7 +761,7 @@ function goBack() {
   appState.roomId    = null;
   appState.connected = false;
   appState.files     = [];
-  showPage('landing');
+  document.location.reload()
 }
 
 function handleDisconnect() {
@@ -789,7 +792,8 @@ function goHome() {
   appState.roomId    = null;
   appState.connected = false;
   appState.files     = [];
-  showPage('landing');
+  //showPage('landing');
+  document.location.reload()
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
