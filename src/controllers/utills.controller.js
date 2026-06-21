@@ -34,7 +34,7 @@ async function roomCheck(roomCode) {
 // })
 async function generateRoomCode() {
 
-    const newRoomCode = (await crypto.randomBytes(3).toString('hex'.toUpperCase()));
+    const newRoomCode = (await crypto.randomBytes(2).toString('hex'.toUpperCase()));
     console.log("new room code utils :", newRoomCode)
 
     const r = await room.create({

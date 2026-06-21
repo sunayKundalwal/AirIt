@@ -1,6 +1,6 @@
 
 import { socket } from "./socket.js"
-import { onPeerJoined, onReceiverConnected, onRoomNotFound } from "./sri.js";
+import { onPeerJoined, onReceiverConnected, onRoomNotFound } from "./script.js";
 
 import { addNewIceCandidate,addAnswer,answerOffer, call, } from "./webRTCConnection.js"
 
@@ -35,12 +35,7 @@ socket.on("OfferData",async (d)=>{
     }
 })
 
-//someone just made a new offer and we're already here - call createOfferEls
-socket.on('newOfferAwaiting', offers => {
-     //console.log("new offer awaiting")
-    //console.log(offer)
-    
-})
+
 
 socket.on('answerResponse', offerObj => {
     console.log("answer offer obj")
@@ -68,20 +63,6 @@ socket.on("generatedRoomCode", async (code) => {
     }
 })
 
-function createOfferEls(offers) {
-    //make green answer button for this new offer
-    const answerEl = document.querySelector('#answer');
-    offers.forEach(o => {
-        console.log(o);
-        const newOfferEl = document.createElement('div');
-        newOfferEl.innerHTML = `<button class="btn btn-success col-1">Answer ${o.offererUserName}</button>`
-        newOfferEl.addEventListener('click', () => {
-            console.log("reached here ")
-            answerOffer(o)
-        })
-        // answerEl.appendChild(newOfferEl);
-    })
-}
 })
 
 

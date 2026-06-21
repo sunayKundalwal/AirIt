@@ -10,7 +10,7 @@ import {
     appState,
     setSendButtonState,
     showToast,
-} from "./sri.js";
+} from "./script.js";
 
 // ─── Shared receiver-side state ───────────────────────────────────────────────
 // Both answerDataChannel and callDataChannel use the same receiver logic,

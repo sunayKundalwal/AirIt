@@ -2,7 +2,7 @@
 import { userName, socket } from "./socket.js";
 import { answerDataChannel, callDataChannel } from "./dataChannel.js";
 import { roomCode } from "./socketEvents.js";
-import { appState, setNavStatus, setSendButtonState, showToast } from "./sri.js";
+import { appState, setNavStatus, setSendButtonState, showToast } from "./script.js";
 
 let peerConnection;
 
@@ -14,8 +14,8 @@ const peerConfiguration = {
     {
       urls: [
         "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302",
-        "stun:stun.relay.metered.ca:80"
+        "stun:stun1.l.google.com:19302"
+        
       ]
     },
     {
