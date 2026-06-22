@@ -454,6 +454,23 @@
       color: transparent;
     }
 
+    /* ── QR card: white "scan tile" inset into the dark card so the code
+         keeps full contrast for scanners, regardless of the dark theme ── */
+    .qr-tile {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 8px;
+      flex-shrink: 0;
+      line-height: 0;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 12px 28px -12px rgba(124,92,255,0.45);
+    }
+    .qr-tile img {
+      display: block;
+      width: 72px;
+      height: 72px;
+      border-radius: 6px;
+    }
+
     /* ── Respect reduced-motion preferences ── */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -688,6 +705,21 @@
               </button>
             </div>
             <p class="text-xs text-slate-500 mt-3">Share this 6-character code with whoever needs to receive files.</p>
+          </div>
+
+          <!-- Scan to open AirIt — static QR, always points at the site (not room-specific) -->
+          <div class="card flex items-center gap-4">
+            <div class="qr-tile">
+              <img src="qr-airit.png" width="120" height="120" alt="QR code linking to airit.site" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-white mb-0.5">Scan to open AirIt</p>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Point a phone camera at this code to open
+                <a href="https://www.airit.site/" target="_blank" rel="noopener" class="text-brand-400 hover:text-brand-200 underline underline-offset-2">airit.site</a>
+                on another device, then join with the room code above.
+              </p>
+            </div>
           </div>
 
           <!-- File drop zone -->
@@ -975,26 +1007,7 @@ Select the destination folder on the receiver's device where the files will be d
 
   </main>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════
-       FOLDER PICKER MODAL (Receiver side)
-       ───────────────────────────────────────────────────────────────────
-       Shown the moment the receiver gets the FIRST 'file-meta' message of
-       a batch (inside onFileMetaReceived, gated by folderGate.hasFolder).
-       The rest of onFileMetaReceived's normal UI reveal logic, and every
-       subsequent chunk/file-end handling, is blocked until the user picks
-       a folder here.
 
-       BROWSER-API CONSTRAINT (see also the long comment in script.js
-       above pickFolder()):
-       window.showDirectoryPicker() MUST be invoked SYNCHRONOUSLY inside
-       a real 'click' event handler. It cannot be called from a timer,
-       from inside an async function after an `await`, or from a
-       Promise callback — doing so loses the "user activation" flag and
-       the browser throws a SecurityError. That's why this modal does
-       NOT auto-trigger the picker; it waits for the user to physically
-       click #btn-pick-folder, whose listener calls the picker as the
-       very first synchronous statement.
-       ═══════════════════════════════════════════════════════════════════════ -->
   <div id="folder-picker-modal" class="hidden fixed inset-0 z-[9998] flex items-center justify-center px-4">
     <!-- Backdrop — purely decorative, intentionally has no click-to-close
          handler, since the user MUST pick a folder to proceed. -->

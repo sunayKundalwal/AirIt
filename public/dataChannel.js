@@ -140,7 +140,7 @@ function attachReceiverHandlers(dataChannel) {
                        dataChannel.send(JSON.stringify({
                             type: "receiver-ready",
                             index: msg.index,
-                            w:writable
+                            
                         }));
                 }
 
