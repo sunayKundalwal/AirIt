@@ -20,6 +20,10 @@ hideLoadingScreen()
 //     createOfferEls(offers)
 // })
 
+
+
+
+
   let data;
 socket.on("OfferData",async (d)=>{
      data = JSON.parse(d)

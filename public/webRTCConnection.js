@@ -5,50 +5,62 @@ import { roomCode } from "./socketEvents.js";
 import { appState, setNavStatus, setSendButtonState, showToast } from "./script.js";
 
 let peerConnection;
-
+let peerConfiguration
 let didIOffer = false;
 let dataChannel;
 
-const peerConfiguration = {
-  iceServers: [
-    {
-      urls: [
-        "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302",
+// const peerConfiguration = {
+//   iceServers: [
+//     {
+//       urls: [
+//         "stun:stun.l.google.com:19302",
+//         "stun:stun1.l.google.com:19302",
        
         
-      ]
-    },
-    //     {
-    //     urls: "turn:global.relay.metered.ca:80",
-    //     username: "96740a752ec80c594b77a996",
-    //     credential: "nYjSqUTw4aOr/VzH",
-    //   },
-    //   {
-    //     urls: "turn:global.relay.metered.ca:80?transport=tcp",
-    //     username: "96740a752ec80c594b77a996",
-    //     credential: "nYjSqUTw4aOr/VzH",
-    //   },
-    //   {
-    //     urls: "turn:global.relay.metered.ca:443",
-    //     username: "96740a752ec80c594b77a996",
-    //     credential: "nYjSqUTw4aOr/VzH",
-    //   },
-    //   {
-    //     urls: "turns:global.relay.metered.ca:443?transport=tcp",
-    //     username: "96740a752ec80c594b77a996",
-    //     credential: "nYjSqUTw4aOr/VzH",
-    //   },
+//       ]
+//     },
+//     //     {
+//     //     urls: "turn:global.relay.metered.ca:80",
+//     //     username: "96740a752ec80c594b77a996",
+//     //     credential: "nYjSqUTw4aOr/VzH",
+//     //   },
+//     //   {
+//     //     urls: "turn:global.relay.metered.ca:80?transport=tcp",
+//     //     username: "96740a752ec80c594b77a996",
+//     //     credential: "nYjSqUTw4aOr/VzH",
+//     //   },
+//     //   {
+//     //     urls: "turn:global.relay.metered.ca:443",
+//     //     username: "96740a752ec80c594b77a996",
+//     //     credential: "nYjSqUTw4aOr/VzH",
+//     //   },
+//     //   {
+//     //     urls: "turns:global.relay.metered.ca:443?transport=tcp",
+//     //     username: "96740a752ec80c594b77a996",
+//     //     credential: "nYjSqUTw4aOr/VzH",
+//     //   },
    
-  ]
-};
+//   ]
+// };
 
 // -------------------- CALL --------------------
 
+
+
+
+
 const call = async () => {
-    try {
+    await socket.emit("getTURNCreds")
+
+    socket.once("TURNCreds",async (creds)=> {
+        console.log(JSON.parse(creds))
+        peerConfiguration = (JSON.parse(creds))
+        console.log(peerConfiguration)
+
+         try {
         console.log("ghfghfghf")
-        await createPeerConnection(null, roomCode)
+        didIOffer = true
+        await createPeerConnection(null, appState.roomId)
 
         dataChannel = peerConnection.createDataChannel("file-transfer", {
             ordered: true,      // preserve order
@@ -64,7 +76,7 @@ const call = async () => {
 
 
 
-        didIOffer = true
+        
         // console.log("sent offer to server")
         socket.emit("newOffer", offer);
         console.log("sent offer to server")
@@ -75,6 +87,8 @@ const call = async () => {
         showToast("Your network is blocking the Connection request, try Connecting to another Network!", "failed")
          setNavStatus(`error`,"Connect to another Network")
     }
+    })
+   
 
 
 }
@@ -82,10 +96,17 @@ const call = async () => {
 
 // -------------------- ANSWER OFFER --------------------
 const answerOffer = async (offerObj) => {
+
+    await socket.emit("getTURNCreds")
+
+    socket.once("TURNCreds",async (creds)=> {
+        console.log(JSON.parse(creds))
+        peerConfiguration = (JSON.parse(creds))
+        console.log(peerConfiguration)
     try {
         didIOffer = false
 
-        await createPeerConnection(offerObj, appState.SenderRoomId);
+        await createPeerConnection(offerObj, appState.roomId);
 
         peerConnection.ondatachannel = (event) => {
             dataChannel = event.channel;
@@ -145,6 +166,7 @@ const answerOffer = async (offerObj) => {
         showToast("Your network is blocking the Connection request, try Connecting to another Network!", "failed")
          setNavStatus(`error`,"Connect to another Network")
     } 
+})
 
 }
 

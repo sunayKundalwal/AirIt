@@ -1,5 +1,5 @@
 import { io } from "./app.js"
-import { addOfferAndAnswer, generateRoomCode, joinRoom, addIceCandidates, roomCheck } from "./controllers/utills.controller.js";
+import { addOfferAndAnswer, generateRoomCode, joinRoom, addIceCandidates, roomCheck, getTURNCreds } from "./controllers/utills.controller.js";
 import { room } from "./models/room.model.js"
 
 
@@ -36,6 +36,12 @@ const setupRTC = async () => {
             
         })
 
+
+        socket.on("getTURNCreds",async ()=> {
+           console.log("reached getTURNCreds")
+           let creds = await getTURNCreds()
+           socket.emit("TURNCreds",JSON.stringify(creds))
+        })
 
  socket.on("createRoom",async (d) => {
                roomCode = await generateRoomCode()
@@ -133,7 +139,7 @@ const setupRTC = async () => {
             const { didIOffer, iceUserName, iceCandidate,roomCode} = data;
             //  console.log(offers)
             //  console.log(didIOffer, iceUserName, iceCandidate)
-
+                console.log(`roomCode send : ${roomCode}`)
                 const offer = await roomCheck(roomCode)
             if (didIOffer) {
                 

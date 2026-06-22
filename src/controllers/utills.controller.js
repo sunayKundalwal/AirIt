@@ -153,7 +153,9 @@ async function addIceCandidates(roomCode, iceCandidates, type) {
 
 async function addOfferAndAnswer(roomCode, pack, type) { 
     console.log("reached add offer and answer")
-    console.log(`pack : ${pack}`)
+    console.log(`pack : ${JSON.stringify(pack)}`)
+    console.log(`room Code : ${roomCode}`)
+
     const roomStatus = await roomCheck(roomCode)
 
     if (type == "offerer") {
@@ -172,4 +174,21 @@ async function addOfferAndAnswer(roomCode, pack, type) {
     }
 }
 
-export { generateRoomCode, joinRoom ,addIceCandidates,addOfferAndAnswer,roomCheck}
+async function getTURNCreds (){
+    const req = await fetch(
+    `https://rtc.live.cloudflare.com/v1/turn/keys/${process.env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.CF_TURN_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ttl: 86400 }),
+    }
+  );
+
+  const data = await req.json();
+ return data
+}
+
+export { generateRoomCode, joinRoom ,addIceCandidates,addOfferAndAnswer,roomCheck,getTURNCreds}
