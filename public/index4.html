@@ -215,7 +215,7 @@
         </div>
         <!-- Room ID chip: truncated font on mobile -->
         <div id="nav-room-chip" class="hidden flex-shrink-0">
-          <span class="badge badge-gray font-mono text-[11px] sm:text-xs" id="nav-room-id-label">—</span>
+          <span class="badge badge-gray font-mono text-[11px] sm:text-xs" id=" ">—</span>
         </div>
         <!-- Disconnect: icon-only on mobile, icon+label on sm+ -->
         <button id="btn-disconnect" class="btn btn-ghost hidden text-xs px-2 sm:px-3" onclick="handleDisconnect()">
@@ -790,7 +790,7 @@
      */
     function initSenderPage(roomId) {
       document.getElementById('sender-room-id').textContent = roomId;
-      document.getElementById('nav-room-id-label').textContent = roomId;
+      document.getElementById(' ').textContent = roomId;
       appState.files = [];
       renderSenderFiles();
       setSendButtonState();
@@ -1018,7 +1018,7 @@
       if (code.length !== 6) return;
 
       appState.roomId = code;
-      document.getElementById('nav-room-id-label').textContent = code;
+      document.getElementById(' ').textContent = code;
 
       // Lock the form while connecting
       document.getElementById('room-code-input').disabled = true;

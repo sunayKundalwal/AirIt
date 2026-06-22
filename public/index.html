@@ -47,9 +47,14 @@
           animation: {
             'pulse-slow': 'pulse 3s ease-in-out infinite',
             'fade-in':    'fadeIn 0.25s ease forwards',
+             'loading-slide':  'loadingSlide 1.2s ease-in-out infinite'
           },
           keyframes: {
             fadeIn: { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+            loadingSlide: {
+          '0%':   { transform: 'translateX(-150%)' },
+          '100%': { transform: 'translateX(350%)' },
+        },
           },
         }
       }
@@ -463,6 +468,32 @@
 
 <body class="min-h-screen font-sans antialiased">
 
+  <div id="loading-screen" class="fixed inset-0 z-[10000] flex items-center justify-center bg-[#030308] transition-opacity duration-500">
+  <div class="flex flex-col items-center gap-4 text-center">
+
+    <div class="icon-ring w-14 h-14 rounded-2xl bg-brand-500/15 flex items-center justify-center">
+      <svg class="logo-mark float-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="airit-grad-loading" x1="2" y1="20" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#7c5cff"/>
+            <stop offset="1" stop-color="#34e1e8"/>
+          </linearGradient>
+        </defs>
+        <path class="logo-dart" d="M2 21L23 12L2 3V10L17 12L2 14V21Z" fill="url(#airit-grad-loading)"/>
+      </svg>
+    </div>
+
+    <p id="loading-status-text" class="text-xs font-mono tracking-wide text-slate-400">
+      Connecting to server<span class="loading-dots"><span></span><span></span><span></span></span>
+    </p>
+
+    <div class="w-36 h-0.5 rounded-full bg-[#1a1c2e] overflow-hidden">
+      <div class="h-full w-2/5 rounded-full bg-gradient-to-r from-brand-500 to-[#34e1e8] animate-loading-slide"></div>
+    </div>
+
+  </div>
+</div>
+
   <!-- Decorative ambient background — no ids/classes here are referenced by JS -->
   <div id="bg-canvas" aria-hidden="true">
     <div class="aurora aurora-1"></div>
@@ -521,10 +552,8 @@
           <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-400 dot-pulse flex-shrink-0"></span>
           <span id="status-label" class="text-xs text-slate-400 truncate max-w-[80px] sm:max-w-none">Connecting…</span>
         </div>
-        <!-- Room ID chip -->
-        <div id="nav-room-chip" class="hidden flex-shrink-0">
-          <span class="badge badge-gray font-mono text-[11px]" id="nav-room-id-label">—</span>
-        </div>
+        
+       
         <button id="btn-disconnect" class="btn btn-ghost hidden text-xs px-2 sm:px-3 flex-shrink-0">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/></svg>
           <span class="hidden sm:inline">Leave room</span>
@@ -894,10 +923,10 @@
           <!-- Tips while waiting -->
           <div id="receiver-tips" class="card border-dashed">
             <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">How it works</p>
-            <ol class="flex flex-col gap-3 text-xs text-slate-400">
+                        <ol class="flex flex-col gap-3 text-xs text-slate-400">
               <li class="flex gap-2.5">
                 <span class="text-brand-400 font-bold flex-shrink-0">1.</span>
-                Enter the 6-character room code from the sender.
+                Enter the 4-character room code from the sender.
               </li>
               <li class="flex gap-2.5">
                 <span class="text-brand-400 font-bold flex-shrink-0">2.</span>
@@ -905,7 +934,15 @@
               </li>
               <li class="flex gap-2.5">
                 <span class="text-brand-400 font-bold flex-shrink-0">3.</span>
-                Files arrive directly in your browser — save each one when ready.
+Select the destination folder on the receiver's device where the files will be downloaded.
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">4.</span>
+                Select the files to send from the sender's device.
+              </li>
+                             <li class="flex gap-2.5">
+                <span class="text-brand-400 font-bold flex-shrink-0">5.</span>
+                Click Send Files
               </li>
             </ol>
           </div>

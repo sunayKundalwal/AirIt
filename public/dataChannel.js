@@ -45,6 +45,7 @@ function attachReceiverHandlers(dataChannel) {
                 await writable.write(data);
             } else {
                 chunks.push(data);
+                console.log("pushing data to chunks")
             }
             // if(writable == null){
             //     chunks.push(data)
@@ -133,6 +134,14 @@ function attachReceiverHandlers(dataChannel) {
                         writable = null; // fall back to in-RAM chunking
                     }
 
+                }else{
+                    writable = null;
+
+                       dataChannel.send(JSON.stringify({
+                            type: "receiver-ready",
+                            index: msg.index,
+                            w:writable
+                        }));
                 }
 
 
@@ -153,7 +162,9 @@ function attachReceiverHandlers(dataChannel) {
                     onFileComplete(msg.index, currentFile.name, null);
                 } else {
                     // Fallback path: assemble a Blob and let sri.js trigger a download
+
                     const blob = new Blob(chunks, { type: currentFile.mime });
+                    console.log(`blob :- ${blob}`)
                     chunks = [];
                     onFileComplete(msg.index, currentFile.name, blob);
                 }

@@ -1,13 +1,13 @@
 
 import { socket } from "./socket.js"
-import { onPeerJoined, onReceiverConnected, onRoomNotFound } from "./script.js";
+import { appState, hideLoadingScreen, initSenderPage, onPeerJoined, onReceiverConnected, onRoomNotFound, showPage } from "./script.js";
 
 import { addNewIceCandidate,addAnswer,answerOffer, call, } from "./webRTCConnection.js"
 
 // -------------------- SOCKET EVENTS --------------------
 let roomCode;
 socket.io.engine.on("upgrade",async (transport)=>{
-
+hideLoadingScreen()
        await socket.emit("isConnected","it is now connected")
 
        console.log(socket.io.engine.transport.name);
@@ -49,19 +49,22 @@ socket.on('receivedIceCandidateFromServer', iceCandidate => {
     console.log(iceCandidate)
 })
 
-socket.on("generatedRoomCode", async (code) => {
-    console.log(`generated room code :-${code}`)
-    roomCode = code
-    document.getElementById("sender-room-id").textContent = code
-    document.getElementById("nav-room-id-label").textContent = code
-    //document.getElementById("connCodeDisplay").textContent=code
+// socket.on("generatedRoomCode", async (code) => {
+//     console.log(`generated room code :-${code}`)
+//     roomCode = code
+//     document.getElementById("sender-room-id").textContent = code
+//     showPage('sender')
+//     appState.roomId = roomCode
+//     initSenderPage(roomCode)
+  
+//     //document.getElementById("connCodeDisplay").textContent=code
 
-    if(code){
-        console.log("reached call")
-       await call()
-          console.log("after call")
-    }
-})
+//     if(code){
+//         console.log("reached call")
+//        await call()
+//           console.log("after call")
+//     }
+// })
 
 })
 

@@ -34,12 +34,26 @@ async function roomCheck(roomCode) {
 // })
 async function generateRoomCode() {
 
-    const newRoomCode = (await crypto.randomBytes(2).toString('hex'.toUpperCase()));
+   let newRoomCode
+   let roomStat
     console.log("new room code utils :", newRoomCode)
-
-    const r = await room.create({
+    do {
+          newRoomCode = (await crypto.randomBytes(3).toString('hex').toUpperCase());
+        roomStat = await room.findOne({roomId : newRoomCode})
+        console.log(`room stat : ${roomStat}`)
+    } while (roomStat);
+    let  r
+    try {
+         r = await room.create({
         roomId: newRoomCode
     })
+    } catch (error) {
+        newRoomCode
+         r = await room.create({
+        roomId: newRoomCode
+    })
+    }
+    
 
     console.log(r)
 
@@ -139,6 +153,7 @@ async function addIceCandidates(roomCode, iceCandidates, type) {
 
 async function addOfferAndAnswer(roomCode, pack, type) { 
     console.log("reached add offer and answer")
+    console.log(`pack : ${pack}`)
     const roomStatus = await roomCheck(roomCode)
 
     if (type == "offerer") {

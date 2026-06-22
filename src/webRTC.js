@@ -23,31 +23,38 @@ const setupRTC = async () => {
 
         console.log(`New user connected! socket id : ${socket.id}`)
 
-        const roomCode = await generateRoomCode()
-        console.log(`room code rtc :${roomCode}`)
+        let roomCode 
+      
 
-        socket.on("isConnected", (d) => {
-            console.log("websocket is now connected")
-            socket.emit("generatedRoomCode", roomCode)
-        })
-
-
-
-
-
-
-        const socketDetails = {
+          const socketDetails = {
             socketId: socket.id,
             userName: userName
         }
-        const joinNewSocket = await joinRoom(roomCode, socketDetails,"offerer")
-        console.log(joinNewSocket)
 
-
-        connectedSockets.push({
-            socketId: socket.id,
-            userName: userName
+        socket.on("isConnected", (d) => {
+            console.log("websocket is now connected")
+            
         })
+
+
+ socket.on("createRoom",async (d) => {
+               roomCode = await generateRoomCode()
+                  const joinNewSocket = await joinRoom(roomCode, socketDetails,"offerer")
+        console.log(joinNewSocket)
+            socket.emit("generatedRoomCode", {roomCode})
+         
+        })
+
+
+
+      
+       
+
+
+        // connectedSockets.push({
+        //     socketId: socket.id,
+        //     userName: userName
+        // })
 
         socket.on("newOffer", async (newOffer) => {
             console.log("recieved new offer")
@@ -63,7 +70,7 @@ const setupRTC = async () => {
             offers.push(offerObj)
             //roomCode, package, type
             await addOfferAndAnswer(roomCode, newOffer, "offerer")
-            socket.broadcast.emit("newOfferAwaiting", [offerObj])
+           
         })
 
 

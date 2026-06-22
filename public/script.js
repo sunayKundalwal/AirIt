@@ -2,7 +2,7 @@
 import { dirAckStatus } from "./dataChannel.js";
 import { socket, userName } from "./socket.js";
 import { roomCode }          from "./socketEvents.js";
-import { dataChannel }       from "./webRTCConnection.js";
+import { call, dataChannel }       from "./webRTCConnection.js";
 
 //App State ->
 const appState = {
@@ -119,12 +119,39 @@ function selectRole(role) {
   appState.peerName = document.getElementById('peer-name').textContent;
 
   if (role === 'sender') {
-    const roomId = roomCode;
-    appState.roomId = roomId;
-    initSenderPage(roomId);
-    showPage('sender');
+ socket.emit("createRoom");
+    
+    if(!roomCode){
+       
+      appState.roomId = '------';
+      initSenderPage(appState.roomId);
+      showPage('sender');
+    }
 
-    socket.emit('createRoom', { roomCode: roomId });
+  
+
+    socket.once("generatedRoomCode", async ({ roomCode }) => {
+
+         if(roomCode){
+        console.log("reached call")
+      await call()
+          console.log("after call")
+    }
+      showPage('sender');
+      appState.roomId = roomCode;
+      initSenderPage(roomCode);
+
+    });
+    // const roomId = roomCode;
+
+    // appState.roomId = roomId;
+    // initSenderPage(roomId.toUpperCase());
+    // showPage('sender');
+
+    
+
+
+    //socket.emit('createRoom', { roomCode: roomId });
   } else {
     initReceiverPage();
     showPage('receiver');
@@ -145,7 +172,7 @@ function resetFolderGate() {
 //Sender page init
 function initSenderPage(roomId) {
   document.getElementById('sender-room-id').textContent   = roomId.toUpperCase();
-  document.getElementById('nav-room-id-label').textContent = roomId;
+  
   appState.files = [];
   renderSenderFiles();
   //setSendButtonState();
@@ -179,7 +206,7 @@ function initReceiverPage() {
 function showNavChrome(role) {
   document.getElementById('nav-status').classList.remove('hidden');
   document.getElementById('nav-status').classList.add('flex');
-  document.getElementById('nav-room-chip').classList.remove('hidden');
+ 
   document.getElementById('btn-disconnect').classList.remove('hidden');
   setNavStatus('waiting', 'Waiting for peer…');
 }
@@ -331,17 +358,17 @@ function setSendButtonState() {
    ───────────────────────────────────────────────────────────────────────── */
 function onRoomCodeInput(input) {
   input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  document.getElementById('btn-join-room').disabled = input.value.length < 4;
+  document.getElementById('btn-join-room').disabled = input.value.length < 6;
   document.getElementById('join-error').classList.add('hidden');
 }
 
 function joinRoom() {
   const code = document.getElementById('room-code-input').value.trim().toUpperCase();
-  if (code.length !== 4) return;
+  if (code.length !== 6) return;
 
   appState.roomId    = code;
   appState.SenderRoomId = code;
-  document.getElementById('nav-room-id-label').textContent = code;
+ 
 
   document.getElementById('room-code-input').disabled = true;
   document.getElementById('btn-join-room').disabled   = true;
@@ -747,7 +774,7 @@ function handleDisconnect() {
 function resetNavChrome() {
   document.getElementById('nav-status').classList.add('hidden');
   document.getElementById('nav-status').classList.remove('flex');
-  document.getElementById('nav-room-chip').classList.add('hidden');
+
   document.getElementById('btn-disconnect').classList.add('hidden');
 }
 
@@ -854,6 +881,25 @@ function fileTypeIcon(fileName) {
   </svg>`;
 }
 
+//Loading screen (shown until WebSocket connects)
+function setLoadingStatus(text, isError = false) {
+  const el = document.getElementById('loading-status-text');
+  if (!el) return;
+  el.classList.toggle('text-red-400', isError);
+  el.innerHTML = isError
+    ? text
+    : `${text}<span class="loading-dots"><span></span><span></span><span></span></span>`;
+}
+
+function hideLoadingScreen() {
+  document.getElementById('loading-screen')?.classList.add('opacity-0', 'pointer-events-none');
+}
+
+function showLoadingScreen(text) {
+  document.getElementById('loading-screen')?.classList.remove('opacity-0', 'pointer-events-none');
+  setLoadingStatus(text);
+}
+
 //Event listeners
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -938,5 +984,9 @@ export {
   showFolderPickerModal,
   setSendButtonState,
   showToast,
-  setNavStatus
+  setNavStatus,
+  showPage,
+  initSenderPage,
+  showLoadingScreen,
+  hideLoadingScreen
 };
