@@ -11,7 +11,7 @@ const password = 'x'
 //const socketURL =  "http://localhost:8080"
 const socketURL = "https://airit-production-716d.up.railway.app/" 
 
-const socket = window.io(socketURL, {
+const socket = io(socketURL, {
     auth: {
         userName,
         password
