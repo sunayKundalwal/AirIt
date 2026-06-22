@@ -6,10 +6,10 @@ const userName = "AirIt" + Math.floor(Math.random() * 100000);
 const password = 'x'
 
 
-const socketURL =  "https://cozy-tightrope-protegee.ngrok-free.dev"
+//const socketURL =  "https://cozy-tightrope-protegee.ngrok-free.dev"
 //const socketURL =  "https://www.airit.site"
 //const socketURL =  "http://localhost:8080"
-//const socketURL = "https://airit-production-716d.up.railway.app/" 
+const socketURL = "https://airit-production-716d.up.railway.app/" 
 
 const socket = window.io(socketURL, {
     auth: {
