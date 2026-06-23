@@ -255,7 +255,10 @@ const retryWithTCP = async (offerObj) => {
 // -------------------- PEER CONNECTION -------------------
 const createPeerConnection = async (offerObj, roomId) => {
     try {
-        peerConnection = new RTCPeerConnection(peerConfiguration);
+        peerConnection = new RTCPeerConnection( peerConnection = new RTCPeerConnection({
+            ...peerConfiguration,
+            iceTransportPolicy: "relay"  // ← add this
+        });
 
         peerConnection.onicecandidateerror = (event) => {
     console.log("ICE Error");
