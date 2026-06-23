@@ -190,7 +190,7 @@ const addAnswer = async (offerObj) => {
             new RTCSessionDescription(offerObj.answer)
         );
 
-        peerConnection.onconnectionstatechange = () => {
+        peerConnection.onconnectionstatechange = async() => {
             console.log("State:", peerConnection.connectionState);
 
             switch (peerConnection.connectionState) {
