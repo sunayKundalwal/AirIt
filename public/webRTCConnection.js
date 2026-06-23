@@ -132,7 +132,7 @@ const answerOffer = async (offerObj) => {
 
          console.log(peerConnection.sctp.maxMessageSize);
       
-         peerConnection.onconnectionstatechange = () => {
+         peerConnection.onconnectionstatechange =async () => {
             console.log("State:", peerConnection.connectionState);
 
             switch (peerConnection.connectionState) {
@@ -153,6 +153,9 @@ const answerOffer = async (offerObj) => {
                 case "failed":
                     showToast("DataChannel failed,try with different internet connection!", "failed");
                     setNavStatus('failed',' your network is blocking your request')
+                      showToast("Connection failed, retrying with TCP...", "warn");
+    setNavStatus('failed', 'Retrying over TCP...');
+    await retryWithTCP(offerObj); // see below
                     break;
                 default:
                     showToast("Unknown", "failed");
@@ -208,6 +211,9 @@ const addAnswer = async (offerObj) => {
                 case "failed":
                     showToast("DataChannel failed,try with different internet connection!", "failed");
                     setNavStatus('failed',' your network is blocking your request')
+                      showToast("Connection failed, retrying with TCP...", "warn");
+    setNavStatus('failed', 'Retrying over TCP...');
+    await retryWithTCP(offerObj); // see below
                     break;
                 default:
                     showToast("Unknown", "failed");
@@ -226,7 +232,24 @@ const addAnswer = async (offerObj) => {
 };
 
 
+// Add this function
+const retryWithTCP = async (offerObj) => {
+    // Force TCP-only TURN candidates
+    if (peerConnection) peerConnection.close();
 
+    peerConfiguration.iceServers = peerConfiguration.iceServers.map(server => {
+        if (server.urls && typeof server.urls === 'string' && server.urls.startsWith('turn:')) {
+            return [
+                server,
+                { ...server, urls: server.urls.replace('turn:', 'turn:').replace('?transport=udp', '') + '?transport=tcp' },
+                { ...server, urls: server.urls.replace('turn:', 'turns:').replace(':3478', ':443') + '?transport=tcp' }
+            ];
+        }
+        return server;
+    }).flat();
+
+    didIOffer ? await call() : await answerOffer(offerObj);
+};
 
 
 // -------------------- PEER CONNECTION -------------------
