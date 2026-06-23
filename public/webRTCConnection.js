@@ -255,7 +255,7 @@ const retryWithTCP = async (offerObj) => {
 // -------------------- PEER CONNECTION -------------------
 const createPeerConnection = async (offerObj, roomId) => {
     try {
-        peerConnection = new RTCPeerConnection( peerConnection = new RTCPeerConnection({
+        peerConnection = new  RTCPeerConnection({
             ...peerConfiguration,
             iceTransportPolicy: "relay"  // ← add this
         });
